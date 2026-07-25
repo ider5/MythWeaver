@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
-import json
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_session
 from app.models import Novel
 from app.schemas.generation import GenerateChapterIn
 from app.services.generation import stream_generate_chapter
+from app.utils.sse import SSE_HEADERS, with_heartbeat
 
 router = APIRouter(prefix="/api/novels/{novel_id}/generate", tags=["generation"])
+
+
+def _sse_response(source: AsyncIterator[dict]) -> StreamingResponse:
+    interval = get_settings().sse_heartbeat_interval
+    return StreamingResponse(
+        with_heartbeat(source, interval=interval),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+    )
 
 
 @router.post("")
@@ -26,7 +37,7 @@ async def generate_chapter(
     if not novel:
         raise HTTPException(404, "小说不存在")
 
-    async def event_stream():
+    async def event_source():
         from app import db as db_mod
 
         assert db_mod.SessionLocal
@@ -38,9 +49,9 @@ async def generate_chapter(
                 run_critic=body.run_critic,
                 max_critic_rounds=body.max_critic_rounds,
             ):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                yield evt
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return _sse_response(event_source())
 
 
 @router.get("/stream")
@@ -52,14 +63,14 @@ async def generate_chapter_sse(
 ):
     """EventSource 友好的 GET SSE。"""
 
-    async def event_stream():
+    async def event_source():
         from app import db as db_mod
 
         assert db_mod.SessionLocal
         async with db_mod.SessionLocal() as s:
             novel = await s.get(Novel, novel_id)
             if not novel:
-                yield f"data: {json.dumps({'event': 'error', 'message': '小说不存在'}, ensure_ascii=False)}\n\n"
+                yield {"event": "error", "message": "小说不存在"}
                 return
             async for evt in stream_generate_chapter(
                 s,
@@ -68,6 +79,6 @@ async def generate_chapter_sse(
                 run_critic=run_critic,
                 max_critic_rounds=max_critic_rounds,
             ):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                yield evt
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return _sse_response(event_source())

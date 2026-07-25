@@ -67,6 +67,7 @@ class ChapterOut(ORMModel):
     char_count: int
     status: str
     is_generated: bool
+    outline_item_id: Optional[int] = None
     content: Optional[str] = None
 
 
@@ -83,3 +84,16 @@ class ChapterVersionOut(ORMModel):
 class ChapterReviseIn(BaseModel):
     content: str
     commit_to_knowledge: bool = True
+
+
+class ChapterReviseOut(ORMModel):
+    """修订响应：版本已落库；若提交知识库则附带异步 task_id。"""
+
+    id: int
+    chapter_id: int
+    version_type: str
+    content: str
+    consistency_report: Optional[dict] = None
+    parent_version_id: Optional[int] = None
+    created_at: datetime
+    task_id: Optional[int] = None

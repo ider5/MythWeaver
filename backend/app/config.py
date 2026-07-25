@@ -27,9 +27,13 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=PROJECT_ROOT / "data")
     database_url: str = ""
 
-    # Token 预算
+    # Token 预算 / 并发（Kimi 等组织并发上限常为 3，默认留余量）
     context_token_budget: int = 16000
-    ingest_concurrency: int = 8
+    ingest_concurrency: int = 2
+    llm_max_concurrency: int = 2
+    # 向量化与 chat 解耦；智谱等通常高于 Kimi 组织并发上限
+    embedding_max_concurrency: int = 8
+    embedding_batch_size: int = 16
 
     # 摘要模型
     summary_provider: Provider = "openai"
@@ -52,7 +56,13 @@ class Settings(BaseSettings):
     # 限流
     llm_rpm: int = 60
     llm_tpm: int = 100_000
-    llm_max_retries: int = 3
+    llm_max_retries: int = 5
+
+    # LLM HTTP 超时（秒）：连接短、读超时按 chunk 续命（流式/长生成）
+    llm_connect_timeout: float = 20.0
+    llm_stream_read_timeout: float = 180.0
+    # 续写 SSE 心跳间隔；前端空闲超时建议 > 2× 此值
+    sse_heartbeat_interval: float = 12.0
 
     # 成本单价 USD / 1M tokens
     cost_summary_input: float = 0.15

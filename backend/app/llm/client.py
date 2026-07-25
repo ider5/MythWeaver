@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
 from app.config import Provider, get_settings
-from app.llm.rate_limiter import get_rate_limiter, with_retry
+from app.llm.rate_limiter import (
+    get_embedding_concurrency_gate,
+    get_llm_concurrency_gate,
+    get_rate_limiter,
+    with_retry,
+)
 from app.utils.chinese_text import count_tokens
 
 Role = Literal["system", "user", "assistant"]
@@ -71,7 +76,9 @@ class LLMClient:
                 return await self._anthropic_chat(ep, msgs, temperature, max_tokens)
             return await self._openai_chat(ep, msgs, temperature, max_tokens)
 
-        return await with_retry(_call)
+        # 持闸贯穿重试，避免退避期间其它请求继续打满组织并发
+        async with get_llm_concurrency_gate():
+            return await with_retry(_call)
 
     async def stream(
         self,
@@ -87,12 +94,13 @@ class LLMClient:
         est = sum(count_tokens(m["content"]) for m in msgs) + max_tokens
         await self.limiter.acquire(est)
 
-        if ep.provider == "anthropic":
-            async for chunk in self._anthropic_stream(ep, msgs, temperature, max_tokens):
-                yield chunk
-        else:
-            async for chunk in self._openai_stream(ep, msgs, temperature, max_tokens):
-                yield chunk
+        async with get_llm_concurrency_gate():
+            if ep.provider == "anthropic":
+                async for chunk in self._anthropic_stream(ep, msgs, temperature, max_tokens):
+                    yield chunk
+            else:
+                async for chunk in self._openai_stream(ep, msgs, temperature, max_tokens):
+                    yield chunk
 
     async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
         """返回 (vectors, input_tokens)。"""
@@ -106,12 +114,32 @@ class LLMClient:
             from openai import AsyncOpenAI
 
             client = AsyncOpenAI(api_key=s.embedding_api_key or "sk-placeholder", base_url=s.embedding_base_url)
-            resp = await client.embeddings.create(model=s.embedding_model, input=texts)
-            vectors = [item.embedding for item in resp.data]
+            # 智谱 Embedding-3 等支持 dimensions；与 EMBEDDING_DIMS 对齐（默认 2048）
+            create_kwargs: dict[str, Any] = {"model": s.embedding_model, "input": texts}
+            if s.embedding_dims:
+                create_kwargs["dimensions"] = s.embedding_dims
+            resp = await client.embeddings.create(**create_kwargs)
+            # 按 input index 对齐，避免部分厂商乱序返回
+            ordered: list[list[float] | None] = [None] * len(texts)
+            for item in resp.data:
+                idx = getattr(item, "index", None)
+                if idx is None:
+                    # 无 index 时按返回顺序填剩余空位
+                    for i, slot in enumerate(ordered):
+                        if slot is None:
+                            ordered[i] = list(item.embedding)
+                            break
+                else:
+                    ordered[int(idx)] = list(item.embedding)
+            if any(v is None for v in ordered):
+                # 兜底：直接按 data 顺序
+                ordered = [list(item.embedding) for item in resp.data]
+            vectors = [v for v in ordered if v is not None]
             tokens = getattr(resp.usage, "total_tokens", est) if resp.usage else est
             return vectors, int(tokens)
 
-        return await with_retry(_call)
+        async with get_embedding_concurrency_gate():
+            return await with_retry(_call)
 
     def _normalize(self, messages: list[ChatMessage] | list[dict[str, str]]) -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
@@ -122,17 +150,57 @@ class LLMClient:
                 out.append({"role": m["role"], "content": m["content"]})
         return out
 
+    @staticmethod
+    def _is_kimi_endpoint(ep: ModelEndpoint) -> bool:
+        """Moonshot/Kimi：官方要求勿传 temperature/top_p 等采样参数。"""
+        model = (ep.model or "").lower()
+        base = (ep.base_url or "").lower()
+        return (
+            model.startswith("kimi-")
+            or model.startswith("moonshot-")
+            or "moonshot." in base
+            or "kimi.ai" in base
+        )
+
+    def _http_timeout(self):
+        """连接短超时；读超时按 chunk 续命，避免无 timeout 永久挂死或默认过短半截断。"""
+        import httpx
+
+        s = self.settings
+        return httpx.Timeout(
+            connect=s.llm_connect_timeout,
+            read=s.llm_stream_read_timeout,
+            write=s.llm_connect_timeout,
+            pool=s.llm_connect_timeout,
+        )
+
+    def _openai_chat_kwargs(
+        self, ep: ModelEndpoint, messages: list[dict[str, str]], temperature: float, max_tokens: int
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": ep.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if self._is_kimi_endpoint(ep):
+            # 官方：勿显式传 temperature；关闭 thinking（stream/chat 一致，避免长时间无 delta）
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        else:
+            kwargs["temperature"] = temperature
+        return kwargs
+
     async def _openai_chat(
         self, ep: ModelEndpoint, messages: list[dict[str, str]], temperature: float, max_tokens: int
     ) -> ChatResult:
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=ep.api_key or "sk-placeholder", base_url=ep.base_url)
+        client = AsyncOpenAI(
+            api_key=ep.api_key or "sk-placeholder",
+            base_url=ep.base_url,
+            timeout=self._http_timeout(),
+        )
         resp = await client.chat.completions.create(
-            model=ep.model,
-            messages=messages,  # type: ignore[arg-type]
-            temperature=temperature,
-            max_tokens=max_tokens,
+            **self._openai_chat_kwargs(ep, messages, temperature, max_tokens)  # type: ignore[arg-type]
         )
         text = resp.choices[0].message.content or ""
         usage = resp.usage
@@ -149,15 +217,16 @@ class LLMClient:
     ) -> AsyncIterator[dict[str, Any]]:
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=ep.api_key or "sk-placeholder", base_url=ep.base_url)
-        stream = await client.chat.completions.create(
-            model=ep.model,
-            messages=messages,  # type: ignore[arg-type]
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-            stream_options={"include_usage": True},
+        client = AsyncOpenAI(
+            api_key=ep.api_key or "sk-placeholder",
+            base_url=ep.base_url,
+            timeout=self._http_timeout(),
         )
+        create_kwargs = self._openai_chat_kwargs(ep, messages, temperature, max_tokens)
+        create_kwargs["stream"] = True
+        if not self._is_kimi_endpoint(ep):
+            create_kwargs["stream_options"] = {"include_usage": True}
+        stream = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]
         parts: list[str] = []
         in_tok = sum(count_tokens(m["content"]) for m in messages)
         out_tok = 0
@@ -188,7 +257,11 @@ class LLMClient:
     ) -> ChatResult:
         import anthropic
 
-        client = anthropic.AsyncAnthropic(api_key=ep.api_key or "sk-ant-placeholder", base_url=ep.base_url or None)
+        client = anthropic.AsyncAnthropic(
+            api_key=ep.api_key or "sk-ant-placeholder",
+            base_url=ep.base_url or None,
+            timeout=self._http_timeout(),
+        )
         system, converted = self._split_system(messages)
         kwargs: dict[str, Any] = {
             "model": ep.model,
@@ -213,7 +286,11 @@ class LLMClient:
     ) -> AsyncIterator[dict[str, Any]]:
         import anthropic
 
-        client = anthropic.AsyncAnthropic(api_key=ep.api_key or "sk-ant-placeholder", base_url=ep.base_url or None)
+        client = anthropic.AsyncAnthropic(
+            api_key=ep.api_key or "sk-ant-placeholder",
+            base_url=ep.base_url or None,
+            timeout=self._http_timeout(),
+        )
         system, converted = self._split_system(messages)
         kwargs: dict[str, Any] = {
             "model": ep.model,
@@ -268,6 +345,8 @@ class MockLLMClient(LLMClient):
         stream_text: str = "这是生成的章节内容。",
         embed_dim: int = 8,
         smart: bool = True,
+        stream_error: Optional[str] = None,
+        stream_chunk_delay: float = 0.0,
     ) -> None:
         self.settings = get_settings()
         self.limiter = get_rate_limiter()
@@ -275,6 +354,8 @@ class MockLLMClient(LLMClient):
         self.stream_text = stream_text
         self.embed_dim = embed_dim
         self.smart = smart
+        self.stream_error = stream_error
+        self.stream_chunk_delay = stream_chunk_delay
         self._chat_idx = 0
 
     def _smart_response(self, messages: list[dict[str, str]]) -> str:
@@ -360,9 +441,15 @@ class MockLLMClient(LLMClient):
             model=ep.model,
         )
     async def stream(self, messages, *, endpoint=None, temperature=0.8, max_tokens=6000):
+        import asyncio
+
         ep = endpoint or self.generation_endpoint()
         for ch in self.stream_text:
+            if self.stream_chunk_delay > 0:
+                await asyncio.sleep(self.stream_chunk_delay)
             yield {"delta_text": ch}
+        if self.stream_error:
+            raise RuntimeError(self.stream_error)
         yield {
             "done": True,
             "text": self.stream_text,

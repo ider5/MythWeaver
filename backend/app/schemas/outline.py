@@ -44,3 +44,9 @@ class OutlineOut(ORMModel):
 class OutlineUpdateIn(BaseModel):
     title: Optional[str] = None
     items: Optional[list[OutlineItemIn]] = None
+
+
+class OutlineDeleteOut(BaseModel):
+    message: str
+    outline_id: int
+    unbound_chapters: int = 0

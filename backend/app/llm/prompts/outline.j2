@@ -2,6 +2,13 @@
 题材：{{ genre }}
 {% if guidance %}用户指导：{{ guidance }}{% endif %}
 
+【章节编号（必须遵守）】
+- 小说已有 {{ existing_chapter_count }} 章入库。
+- 续写从第 {{ start_from_chapter }} 章起（中文写作「第{{ start_from_chinese }}章」）。
+- 共规划 {{ chapter_count }} 章，title 中的章号必须依次为：{% for i in range(chapter_count) %}第{{ start_from_chapter + i }}章{% if not loop.last %}、{% endif %}{% endfor %}。
+- 禁止使用小于 {{ start_from_chapter }} 的章号；不要从第一章或模型臆测的中间章号起编。
+- 每条 title 格式：第X章：副标题（X 为上述绝对章号的中文数字，如第{{ start_from_chinese }}章：……）。
+
 已有章节摘要（近期）：
 {{ recent_summaries }}
 
@@ -15,7 +22,7 @@ Story Bible 摘要：
 {
   "title": "大纲标题",
   "items": [
-    {"order": 1, "title": "章标题", "summary": "本章概要", "key_points": ["要点1", "要点2"]}
+    {"order": 1, "title": "第{{ start_from_chinese }}章：章标题", "summary": "本章概要", "key_points": ["要点1", "要点2"]}
   ]
 }
-要求：节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。
+要求：节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。items 数量必须恰好为 {{ chapter_count }} 条，order 从 1 递增。

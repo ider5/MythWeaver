@@ -113,14 +113,85 @@ export const novelsApi = {
     genre?: string
   }) => api.post<Novel>('/novels/import/confirm', body),
   ingest: (id: number) => api.post<{ task_id: number }>(`/novels/${id}/ingest`),
-  chapters: (id: number) => api.get(`/novels/${id}/chapters`),
-  chapter: (nid: number, cid: number) => api.get(`/novels/${nid}/chapters/${cid}`),
-  versions: (nid: number, cid: number) => api.get(`/novels/${nid}/chapters/${cid}/versions`),
+  chapters: (id: number) =>
+    api.get<
+      Array<{
+        id: number
+        novel_id: number
+        index: number
+        title: string
+        volume?: string
+        char_count: number
+        status: string
+        is_generated: boolean
+        outline_item_id?: number | null
+        content?: string | null
+      }>
+    >(`/novels/${id}/chapters`),
+  chapter: (nid: number, cid: number) =>
+    api.get<{
+      id: number
+      novel_id: number
+      index: number
+      title: string
+      volume?: string
+      char_count: number
+      status: string
+      is_generated: boolean
+      outline_item_id?: number | null
+      content?: string | null
+    }>(`/novels/${nid}/chapters/${cid}`),
+  chapterByOutlineItem: (nid: number, outlineItemId: number) =>
+    api.get<{
+      id: number
+      novel_id: number
+      index: number
+      title: string
+      volume?: string
+      char_count: number
+      status: string
+      is_generated: boolean
+      outline_item_id?: number | null
+      content?: string | null
+    }>(`/novels/${nid}/chapters/by-outline-item/${outlineItemId}`),
+  versions: (nid: number, cid: number) =>
+    api.get<
+      Array<{
+        id: number
+        chapter_id: number
+        version_type: string
+        content: string
+        consistency_report?: Record<string, unknown> | null
+        parent_version_id?: number | null
+        created_at: string
+      }>
+    >(`/novels/${nid}/chapters/${cid}/versions`),
   revise: (nid: number, cid: number, content: string, commit = true) =>
     api.post(`/novels/${nid}/chapters/${cid}/revise`, {
       content,
       commit_to_knowledge: commit,
     }),
+  removeChapter: (nid: number, cid: number) =>
+    api.delete<{
+      message: string
+      chapter_id: number
+      chapter_index: number
+      outline_item_id?: number | null
+      outline_item_reset: boolean
+    }>(`/novels/${nid}/chapters/${cid}`),
+  removeChapterVersion: (nid: number, cid: number, vid: number) =>
+    api.delete<{
+      message: string
+      chapter_id: number
+      version_id: number
+      chapter_deleted: boolean
+      content_rolled_back: boolean
+      remaining_versions: number
+      outline_item_id?: number | null
+      outline_item_reset: boolean
+      chapter_index?: number
+      active_content?: string | null
+    }>(`/novels/${nid}/chapters/${cid}/versions/${vid}`),
 }
 
 export const bibleApi = {
@@ -152,6 +223,10 @@ export const outlineApi = {
   update: (nid: number, oid: number, body: unknown) =>
     api.put<Outline>(`/novels/${nid}/outlines/${oid}`, body),
   confirm: (nid: number, oid: number) => api.post<Outline>(`/novels/${nid}/outlines/${oid}/confirm`),
+  remove: (nid: number, oid: number) =>
+    api.delete<{ message: string; outline_id: number; unbound_chapters: number }>(
+      `/novels/${nid}/outlines/${oid}`,
+    ),
 }
 
 export const tasksApi = {

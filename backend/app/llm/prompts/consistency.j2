@@ -3,9 +3,13 @@
 {
   "ok": true/false,
   "issues": [
-    {"type": "name|alias|do_not_violate|power_jump|continuity", "severity": "info|warning|error", "message": "", "detail": ""}
+    {"type": "name|alias|do_not_violate|power_jump|continuity|chapter_meta", "severity": "info|warning|error", "message": "", "detail": ""}
   ]
 }
+
+【硬性检查·章号元指称】
+- 正文叙述（首行章节标题除外）不得出现「第N章」「第21章」「第二十一章」「本章」「上一章」「下一章」「下章」等对本书结构的引用。
+- 若角色回忆过往，应直接写事件/人物，不得用章号指称；命中则 type=chapter_meta、severity=error。
 
 Story Bible：
 {{ story_bible }}

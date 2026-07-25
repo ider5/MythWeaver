@@ -117,6 +117,37 @@ def count_tokens(text: str) -> int:
     return int(chars * 1.5 + ascii_len)
 
 
+_CN_DIGITS = "零一二三四五六七八九"
+
+
+def int_to_chinese(n: int) -> str:
+    """将正整数转为中文数字（覆盖常见章号 1–9999）。"""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n < 10:
+        return _CN_DIGITS[n]
+    if n < 20:
+        return "十" if n == 10 else f"十{_CN_DIGITS[n - 10]}"
+    if n < 100:
+        tens, ones = divmod(n, 10)
+        return f"{_CN_DIGITS[tens]}十" + (_CN_DIGITS[ones] if ones else "")
+    if n < 1000:
+        hundreds, rest = divmod(n, 100)
+        if rest == 0:
+            return f"{_CN_DIGITS[hundreds]}百"
+        if rest < 10:
+            return f"{_CN_DIGITS[hundreds]}百零{_CN_DIGITS[rest]}"
+        return f"{_CN_DIGITS[hundreds]}百{int_to_chinese(rest)}"
+    if n < 10000:
+        thousands, rest = divmod(n, 1000)
+        if rest == 0:
+            return f"{_CN_DIGITS[thousands]}千"
+        if rest < 100:
+            return f"{_CN_DIGITS[thousands]}千零{int_to_chinese(rest)}"
+        return f"{_CN_DIGITS[thousands]}千{int_to_chinese(rest)}"
+    return str(n)
+
+
 def extract_keywords(text: str, top_k: int = 20) -> list[str]:
     if jieba is None:
         # 简单按标点切

@@ -1,6 +1,10 @@
 你是小说修订编辑。根据一致性问题清单修正章节，尽量少改，保持文风与情节走向。
 输出修正后的完整正文（不要解释）。
 
+【修订硬性要求】
+- 若问题含 chapter_meta：删除或改写所有「第N章/本章/上一章/下一章/下章」等章号元指称；回忆改为直接叙述事件、人物与细节。
+- 首行若已是章节标题可保留；正文叙述中不得再出现章号元指称，也不得新引入此类说法。
+
 问题清单：
 {% for issue in issues %}- [{{ issue.severity }}] {{ issue.type }}: {{ issue.message }}{% if issue.detail %}（{{ issue.detail }}）{% endif %}
 {% endfor %}

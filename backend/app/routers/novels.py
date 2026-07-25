@@ -20,7 +20,7 @@ from app.schemas.novel import (
     NovelUpdate,
 )
 from app.services import ingestion
-from app.services.generation import revise_and_commit
+from app.services.generation import delete_chapter, delete_chapter_version, revise_and_commit
 
 router = APIRouter(prefix="/api/novels", tags=["novels"])
 
@@ -131,10 +131,42 @@ async def list_chapters(novel_id: int, session: AsyncSession = Depends(get_sessi
             char_count=c.char_count,
             status=c.status,
             is_generated=c.is_generated,
+            outline_item_id=c.outline_item_id,
             content=None,
         )
         for c in rows
     ]
+
+
+@router.get("/{novel_id}/chapters/by-outline-item/{outline_item_id}", response_model=ChapterOut)
+async def get_chapter_by_outline_item(
+    novel_id: int,
+    outline_item_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """按大纲条目取已生成章节正文（续写页刷新回载用）。"""
+    ch = (
+        await session.execute(
+            select(Chapter).where(
+                Chapter.novel_id == novel_id,
+                Chapter.outline_item_id == outline_item_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not ch:
+        raise HTTPException(404, "该大纲条目尚无已生成章节")
+    return ChapterOut(
+        id=ch.id,
+        novel_id=ch.novel_id,
+        index=ch.index,
+        title=ch.title,
+        volume=ch.volume,
+        char_count=ch.char_count,
+        status=ch.status,
+        is_generated=ch.is_generated,
+        outline_item_id=ch.outline_item_id,
+        content=ch.content,
+    )
 
 
 @router.get("/{novel_id}/chapters/{chapter_id}", response_model=ChapterOut)
@@ -151,6 +183,7 @@ async def get_chapter(novel_id: int, chapter_id: int, session: AsyncSession = De
         char_count=ch.char_count,
         status=ch.status,
         is_generated=ch.is_generated,
+        outline_item_id=ch.outline_item_id,
         content=ch.content,
     )
 
@@ -184,3 +217,36 @@ async def revise_chapter(
         session, chapter_id, body.content, commit_to_knowledge=body.commit_to_knowledge
     )
     return ver
+
+
+@router.delete("/{novel_id}/chapters/{chapter_id}/versions/{version_id}")
+async def remove_chapter_version(
+    novel_id: int,
+    chapter_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """删除单个章节版本。
+
+    若删的是当前正文对应版本则回退到剩余最新版；删光最后一版则整章清除并回退大纲条目。
+    """
+    try:
+        return await delete_chapter_version(session, novel_id, chapter_id, version_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@router.delete("/{novel_id}/chapters/{chapter_id}")
+async def remove_chapter(
+    novel_id: int,
+    chapter_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """删除章节正文、版本链、摘要与向量；大纲条目保留并回退为 pending。
+
+    Story Bible 增量抽取不回滚。
+    """
+    try:
+        return await delete_chapter(session, novel_id, chapter_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e

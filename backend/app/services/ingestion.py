@@ -18,7 +18,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, Novel, StyleSample, Summary
 from app.services import story_bible as bible_svc
-from app.services.retrieval import embed_and_store
+from app.services.retrieval import embed_and_store, embed_and_store_batch
 from app.services.tasks import TaskProgress, get_task_queue
 from app.utils.chinese_text import (
     ParsedChapter,
@@ -180,49 +180,11 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
     done = 0
     lock = asyncio.Lock()
 
-    async def process_one(ch: Chapter) -> None:
-        nonlocal done
-        async with sem:
-            # 断点续传：每阶段独立
-            if ch.status == "raw":
-                await _summarize_chapter(session, novel, ch)
-                ch.status = "summarized"
-                await session.commit()
-            if ch.status == "summarized":
-                await _extract_chapter(session, novel, ch)
-                ch.status = "extracted"
-                await session.commit()
-            if ch.status == "extracted":
-                text_for_embed = ch.content[:4000]
-                summary = (
-                    await session.execute(
-                        select(Summary).where(
-                            Summary.chapter_id == ch.id, Summary.level == "chapter"
-                        )
-                    )
-                ).scalar_one_or_none()
-                if summary:
-                    text_for_embed = summary.content
-                try:
-                    await embed_and_store(session, ch, text_for_embed, novel_id=novel.id)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("章节 %s 向量化失败: %s", ch.index, exc)
-                ch.status = "embedded"
-                await session.commit()
-
-            async with lock:
-                done += 1
-                pct = 5 + done / total * 85
-                await progress.update(
-                    session,
-                    progress=pct,
-                    message=f"已处理 {done}/{total} 章（第{ch.index}章 {ch.status}）",
-                )
-
-    # 顺序提交数据库会话不安全并发写同一 session；改为串行批次或独立 session
+    # 顺序提交数据库会话不安全并发写同一 session；改为独立 session
     from app import db as db_mod
 
     async def process_one_isolated(ch_id: int) -> None:
+        """摘要 + 实体抽取；向量化放到后续批量阶段。"""
         nonlocal done
         assert db_mod.SessionLocal
         async with sem:
@@ -230,6 +192,17 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
                 ch = await s.get(Chapter, ch_id)
                 n = await s.get(Novel, novel_id)
                 if ch is None or n is None:
+                    return
+                # 已完成向量化：跳过，避免重复 embed
+                if ch.status == "embedded" and ch.embedding_json:
+                    async with lock:
+                        done += 1
+                        pct = 5 + done / total * 70
+                        await progress.update(
+                            s,
+                            progress=pct,
+                            message=f"跳过已向量化 {done}/{total}（第{ch.index}章）",
+                        )
                     return
                 if ch.status == "raw":
                     await _summarize_chapter(s, n, ch)
@@ -239,34 +212,21 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
                     await _extract_chapter(s, n, ch)
                     ch.status = "extracted"
                     await s.commit()
-                if ch.status == "extracted":
-                    text_for_embed = ch.content[:4000]
-                    summary = (
-                        await s.execute(
-                            select(Summary).where(
-                                Summary.chapter_id == ch.id, Summary.level == "chapter"
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if summary:
-                        text_for_embed = summary.content
-                    try:
-                        await embed_and_store(s, ch, text_for_embed, novel_id=n.id)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("章节 %s 向量化失败: %s", ch.index, exc)
-                    ch.status = "embedded"
-                    await s.commit()
                 async with lock:
                     done += 1
-                    pct = 5 + done / total * 85
+                    pct = 5 + done / total * 70
                     await progress.update(
                         s,
                         progress=pct,
-                        message=f"已处理 {done}/{total} 章（第{ch.index}章完成）",
+                        message=f"已处理 {done}/{total} 章（第{ch.index}章 {ch.status}）",
                     )
 
     await progress.update(session, progress=3.0, message=f"开始入库，共 {total} 章")
     await asyncio.gather(*(process_one_isolated(ch.id) for ch in chapters))
+
+    # 批量向量化（智谱等支持一次多 input；跳过已有 embedding_json 的章）
+    await progress.update(session, progress=78.0, message="批量向量化…")
+    await _batch_embed_novel(session, novel, progress)
 
     # 卷摘要
     await progress.update(session, progress=92.0, message="生成卷级摘要")
@@ -279,6 +239,66 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
     novel.status = "ready"
     await session.commit()
     return {"chapter_count": total, "novel_id": novel_id}
+
+
+async def _batch_embed_novel(
+    session: AsyncSession, novel: Novel, progress: TaskProgress
+) -> None:
+    """对尚未向量化的章节批量 embed；已有 JSON 的只补写 vec0。"""
+    from app.db import is_vec_available
+    from app.services.retrieval import upsert_chapter_embedding
+
+    chapters = (
+        await session.execute(
+            select(Chapter).where(Chapter.novel_id == novel.id).order_by(Chapter.index)
+        )
+    ).scalars().all()
+
+    # 已有 JSON：仅补 vec（不调 API）
+    if is_vec_available():
+        for ch in chapters:
+            if ch.embedding_json and ch.status in ("extracted", "embedded"):
+                try:
+                    await upsert_chapter_embedding(session, ch, ch.embedding_json)
+                    ch.status = "embedded"
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("补写 vec0 失败 chapter=%s: %s", ch.index, exc)
+        await session.commit()
+
+    need_api: list[tuple[Chapter, str]] = []
+    for ch in chapters:
+        if ch.embedding_json:
+            if ch.status != "embedded":
+                ch.status = "embedded"
+            continue
+        if ch.status == "raw":
+            continue
+        text_for_embed = ch.content[:4000]
+        summary = (
+            await session.execute(
+                select(Summary).where(
+                    Summary.chapter_id == ch.id, Summary.level == "chapter"
+                )
+            )
+        ).scalar_one_or_none()
+        if summary:
+            text_for_embed = summary.content
+        need_api.append((ch, text_for_embed))
+
+    if not need_api:
+        await session.commit()
+        return
+
+    written = await embed_and_store_batch(session, need_api, novel_id=novel.id)
+    for ch, _ in need_api:
+        if ch.embedding_json:
+            ch.status = "embedded"
+    await session.commit()
+    await progress.update(
+        session,
+        progress=88.0,
+        message=f"向量化完成 {written}/{len(need_api)} 章",
+    )
 
 
 async def _summarize_chapter(session: AsyncSession, novel: Novel, ch: Chapter) -> None:

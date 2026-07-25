@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models import Novel
-from app.schemas.outline import OutlineGenerateIn, OutlineOut, OutlineUpdateIn
+from app.schemas.outline import OutlineDeleteOut, OutlineGenerateIn, OutlineOut, OutlineUpdateIn
 from app.services import outline as outline_svc
 
 router = APIRouter(prefix="/api/novels/{novel_id}/outlines", tags=["outline"])
@@ -70,3 +70,27 @@ async def confirm(novel_id: int, outline_id: int, session: AsyncSession = Depend
     if outline.novel_id != novel_id:
         raise HTTPException(404, "大纲不存在")
     return await outline_svc.confirm_outline(session, outline_id)
+
+
+@router.delete("/{outline_id}", response_model=OutlineDeleteOut)
+async def delete_outline(
+    novel_id: int,
+    outline_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """删除大纲（draft/confirmed 均可）。
+
+    已生成章节正文保留，仅解除与大纲条目的关联。
+    """
+    try:
+        outline = await outline_svc.get_outline(session, outline_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+    if outline.novel_id != novel_id:
+        raise HTTPException(404, "大纲不存在")
+    result = await outline_svc.delete_outline(session, outline_id)
+    return OutlineDeleteOut(
+        message=result["message"],
+        outline_id=result["outline_id"],
+        unbound_chapters=result["unbound_chapters"],
+    )

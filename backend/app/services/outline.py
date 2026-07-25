@@ -2,16 +2,64 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+import re
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.llm.client import get_llm_client
 from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
-from app.models import Novel, Outline, OutlineItem, RecurrentMemory, Summary
+from app.models import Chapter, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services import story_bible as bible_svc
+from app.utils.chinese_text import int_to_chinese
 from app.utils.json_extract import extract_json
+
+_CHAPTER_TITLE_PREFIX = re.compile(
+    r"^[\s　]*第[零〇一二三四五六七八九十百千万两0-9]+章\s*[：:\-—–]?\s*"
+)
+
+
+def rewrite_outline_title(title: str, chapter_number: int) -> str:
+    """按后端绝对章号重写标题前缀，不信任模型输出的章号。"""
+    rest = _CHAPTER_TITLE_PREFIX.sub("", (title or "").strip()).strip()
+    prefix = f"第{int_to_chinese(chapter_number)}章"
+    if not rest:
+        return prefix
+    return f"{prefix}：{rest}"
+
+
+def normalize_outline_items(
+    items: list[dict],
+    *,
+    start_from_chapter: int,
+) -> list[dict]:
+    """将大纲条目校正为从 start_from_chapter 起连续编号。"""
+    normalized: list[dict] = []
+    for i, item in enumerate(items):
+        chapter_number = start_from_chapter + i
+        row = dict(item)
+        row["order"] = i + 1
+        row["title"] = rewrite_outline_title(str(item.get("title") or ""), chapter_number)
+        row["summary"] = item.get("summary") or ""
+        row["key_points"] = item.get("key_points") or []
+        normalized.append(row)
+    return normalized
+
+
+async def _resolve_start_chapter(
+    session: AsyncSession,
+    novel: Novel,
+    start_from_chapter: int | None,
+) -> int:
+    if start_from_chapter is not None:
+        return start_from_chapter
+    max_index = await session.scalar(
+        select(func.max(Chapter.index)).where(Chapter.novel_id == novel.id)
+    )
+    base = max_index if max_index is not None else (novel.chapter_count or 0)
+    return int(base) + 1
 
 
 async def generate_outline(
@@ -26,7 +74,8 @@ async def generate_outline(
     if novel is None:
         raise ValueError("小说不存在")
 
-    start = start_from_chapter or (novel.chapter_count + 1)
+    start = await _resolve_start_chapter(session, novel, start_from_chapter)
+    existing_count = max(start - 1, 0)
 
     summaries = (
         await session.execute(
@@ -55,6 +104,9 @@ async def generate_outline(
         recent_summaries=recent or "（无摘要）",
         story_bible=bible_text or "（空）",
         memory=memory,
+        start_from_chapter=start,
+        start_from_chinese=int_to_chinese(start),
+        existing_chapter_count=existing_count,
     )
     client = get_llm_client()
     result = await client.chat(
@@ -80,13 +132,27 @@ async def generate_outline(
             "items": [
                 {
                     "order": i + 1,
-                    "title": f"第{start + i}章",
+                    "title": f"第{int_to_chinese(start + i)}章",
                     "summary": f"待规划情节 {i + 1}",
                     "key_points": [],
                 }
                 for i in range(chapter_count)
             ],
         }
+
+    raw_items = list(data.get("items") or [])
+    # 条数不足时补齐，过多则截断，保证与规划章数一致
+    while len(raw_items) < chapter_count:
+        raw_items.append(
+            {
+                "order": len(raw_items) + 1,
+                "title": "",
+                "summary": f"待规划情节 {len(raw_items) + 1}",
+                "key_points": [],
+            }
+        )
+    raw_items = raw_items[:chapter_count]
+    items = normalize_outline_items(raw_items, start_from_chapter=start)
 
     outline = Outline(
         novel_id=novel_id,
@@ -96,12 +162,12 @@ async def generate_outline(
     )
     session.add(outline)
     await session.flush()
-    for item in data.get("items") or []:
+    for item in items:
         session.add(
             OutlineItem(
                 outline_id=outline.id,
-                order=int(item.get("order") or 0),
-                title=item.get("title") or "",
+                order=int(item["order"]),
+                title=item["title"],
                 summary=item.get("summary") or "",
                 key_points=item.get("key_points") or [],
                 status="pending",
@@ -167,3 +233,33 @@ async def confirm_outline(session: AsyncSession, outline_id: int) -> Outline:
     outline.status = "confirmed"
     await session.commit()
     return await get_outline(session, outline_id)
+
+
+async def delete_outline(session: AsyncSession, outline_id: int) -> dict:
+    """删除大纲及其条目。
+
+    策略：draft / confirmed 均可删。关联章节正文保留，
+    Chapter.outline_item_id 经 FK ondelete=SET NULL 自动解绑。
+    """
+    outline = await get_outline(session, outline_id)
+    item_ids = [i.id for i in outline.items]
+    unbound = 0
+    if item_ids:
+        unbound = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(Chapter)
+                .where(Chapter.outline_item_id.in_(item_ids))
+            )
+            or 0
+        )
+    novel_id = outline.novel_id
+    oid = outline.id
+    await session.delete(outline)
+    await session.commit()
+    return {
+        "message": "大纲已删除",
+        "outline_id": oid,
+        "novel_id": novel_id,
+        "unbound_chapters": unbound,
+    }
