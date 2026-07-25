@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f3efe6;
+  --bg-deep: #e8e0d2;
+  --ink: #1c1915;
+  --ink-muted: #5c5348;
+  --accent: #2f5d50;
+  --accent-hover: #244a40;
+  --line: #cfc4b2;
+  --panel: #faf7f1;
+  --danger: #8b3a3a;
+  --warn: #8a6a2f;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at top left, #efe6d4 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, #d9e3dc 0%, transparent 45%),
+    var(--bg);
+  font-family: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.font-display {
+  font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "SimSun", serif;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 text-sm transition;
+  background: var(--accent);
+  color: #f7f3ea;
+}
+.btn:hover {
+  background: var(--accent-hover);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center px-4 py-2 text-sm transition;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+.btn-ghost:hover {
+  background: var(--bg-deep);
+}
+.input {
+  @apply w-full px-3 py-2 text-sm outline-none;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.textarea {
+  @apply w-full px-3 py-2 text-sm outline-none min-h-[120px];
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.label {
+  @apply block text-xs mb-1;
+  color: var(--ink-muted);
+}

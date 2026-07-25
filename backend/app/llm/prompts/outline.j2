@@ -1,0 +1,21 @@
+你是网文大纲策划。基于已有小说信息，规划接下来 {{ chapter_count }} 章的续写大纲。
+题材：{{ genre }}
+{% if guidance %}用户指导：{{ guidance }}{% endif %}
+
+已有章节摘要（近期）：
+{{ recent_summaries }}
+
+Story Bible 摘要：
+{{ story_bible }}
+
+递归记忆状态：
+{{ memory }}
+
+请严格输出 JSON（不要 markdown）：
+{
+  "title": "大纲标题",
+  "items": [
+    {"order": 1, "title": "章标题", "summary": "本章概要", "key_points": ["要点1", "要点2"]}
+  ]
+}
+要求：节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。

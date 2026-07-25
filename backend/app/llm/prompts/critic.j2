@@ -1,0 +1,12 @@
+你是小说修订编辑。根据一致性问题清单修正章节，尽量少改，保持文风与情节走向。
+输出修正后的完整正文（不要解释）。
+
+问题清单：
+{% for issue in issues %}- [{{ issue.severity }}] {{ issue.type }}: {{ issue.message }}{% if issue.detail %}（{{ issue.detail }}）{% endif %}
+{% endfor %}
+
+Story Bible：
+{{ story_bible }}
+
+原章节：
+{{ content }}

@@ -1,0 +1,38 @@
+你是资深{{ genre }}网文作者。请续写下一章，严格遵守设定，文风贴近样本。
+
+【硬性约束】
+1. 不得违反 Story Bible 中的禁止事项
+2. 人物称谓必须与别称表一致
+3. 承接上一章结尾状态
+4. 本章需覆盖大纲要点
+5. 输出纯正文，不要章节元信息以外的解释
+
+【题材风格提示】
+{{ genre_hints }}
+
+【Story Bible】
+{{ story_bible }}
+
+【递归记忆】
+{{ memory }}
+
+【文风样本】
+{{ style_samples }}
+
+【近期摘要】
+{{ summaries }}
+
+【相关历史情节】
+{{ rag_context }}
+
+【最近章节全文】
+{{ recent_chapters }}
+
+【本章大纲】
+标题：{{ chapter_title }}
+概要：{{ chapter_summary }}
+要点：
+{% for p in key_points %}- {{ p }}
+{% endfor %}
+
+请直接输出本章正文（可用「{{ chapter_title }}」作为首行标题）。
