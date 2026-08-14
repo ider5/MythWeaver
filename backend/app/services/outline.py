@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,10 +12,13 @@ from sqlalchemy.orm import selectinload
 from app.llm.client import get_llm_client
 from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
-from app.models import Chapter, Novel, Outline, OutlineItem, RecurrentMemory, Summary
+from app.models import AsyncTask, Chapter, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services import story_bible as bible_svc
 from app.utils.chinese_text import int_to_chinese
 from app.utils.json_extract import extract_json
+
+if TYPE_CHECKING:
+    from app.services.tasks import TaskProgress
 
 _CHAPTER_TITLE_PREFIX = re.compile(
     r"^[\s　]*第[零〇一二三四五六七八九十百千万两0-9]+章\s*[：:\-—–]?\s*"
@@ -62,6 +66,67 @@ async def _resolve_start_chapter(
     return int(base) + 1
 
 
+async def _progress(
+    progress: TaskProgress | None,
+    session: AsyncSession,
+    *,
+    pct: float,
+    message: str,
+) -> None:
+    if progress is not None:
+        await progress.update(session, progress=pct, message=message)
+
+
+async def enqueue_outline_generate(
+    session: AsyncSession,
+    novel_id: int,
+    *,
+    chapter_count: int = 5,
+    guidance: str | None = None,
+    start_from_chapter: int | None = None,
+) -> AsyncTask:
+    """入队异步大纲生成，立即返回 task。"""
+    novel = await session.get(Novel, novel_id)
+    if novel is None:
+        raise ValueError("小说不存在")
+    from app.services.tasks import get_task_queue
+
+    return await get_task_queue().enqueue(
+        session,
+        task_type="outline_generate",
+        novel_id=novel_id,
+        message="大纲生成排队中",
+        result={
+            "novel_id": novel_id,
+            "chapter_count": chapter_count,
+            "guidance": guidance,
+            "start_from_chapter": start_from_chapter,
+        },
+    )
+
+
+async def outline_generate_handler(session: AsyncSession, task: AsyncTask, progress: TaskProgress) -> dict:
+    """异步：准备上下文 → LLM → 解析校正 → 落库。"""
+    payload: dict[str, Any] = dict(task.result or {})
+    novel_id = payload.get("novel_id") or task.novel_id
+    if not novel_id:
+        raise ValueError("缺少 novel_id")
+    chapter_count = int(payload.get("chapter_count") or 5)
+    guidance = payload.get("guidance")
+    start_from = payload.get("start_from_chapter")
+    start_from_chapter = int(start_from) if start_from is not None else None
+
+    outline = await generate_outline(
+        session,
+        int(novel_id),
+        chapter_count=chapter_count,
+        guidance=guidance,
+        start_from_chapter=start_from_chapter,
+        progress=progress,
+    )
+    return {"ok": True, "outline_id": outline.id, "novel_id": outline.novel_id}
+
+
 async def generate_outline(
     session: AsyncSession,
     novel_id: int,
@@ -69,6 +134,7 @@ async def generate_outline(
     chapter_count: int = 5,
     guidance: str | None = None,
     start_from_chapter: int | None = None,
+    progress: TaskProgress | None = None,
 ) -> Outline:
     novel = await session.get(Novel, novel_id)
     if novel is None:
@@ -76,6 +142,10 @@ async def generate_outline(
 
     start = await _resolve_start_chapter(session, novel, start_from_chapter)
     existing_count = max(start - 1, 0)
+    # 进度走独立短事务；先取出标量，避免对象在 commit 后过期
+    genre = novel.genre or "玄幻"
+
+    await _progress(progress, session, pct=8.0, message="准备上下文…")
 
     summaries = (
         await session.execute(
@@ -99,7 +169,7 @@ async def generate_outline(
     prompt = render(
         "outline.j2",
         chapter_count=chapter_count,
-        genre=novel.genre or "玄幻",
+        genre=genre,
         guidance=guidance or "",
         recent_summaries=recent or "（无摘要）",
         story_bible=bible_text or "（空）",
@@ -108,6 +178,10 @@ async def generate_outline(
         start_from_chinese=int_to_chinese(start),
         existing_chapter_count=existing_count,
     )
+
+    # LLM 期间不得持有未提交写锁，否则进度独立连接 UPDATE 会死锁/locked
+    await session.commit()
+    await _progress(progress, session, pct=18.0, message="正在生成大纲…")
     client = get_llm_client()
     result = await client.chat(
         [{"role": "user", "content": prompt}],
@@ -124,6 +198,10 @@ async def generate_outline(
         output_tokens=result.output_tokens,
         novel_id=novel_id,
     )
+    # log_cost 会 flush 占用写锁；先提交再推进度，避免 database is locked
+    await session.commit()
+
+    await _progress(progress, session, pct=72.0, message="解析并校正章号…")
     try:
         data = extract_json(result.text)
     except Exception:  # noqa: BLE001
@@ -154,6 +232,7 @@ async def generate_outline(
     raw_items = raw_items[:chapter_count]
     items = normalize_outline_items(raw_items, start_from_chapter=start)
 
+    await _progress(progress, session, pct=88.0, message="保存大纲…")
     outline = Outline(
         novel_id=novel_id,
         title=data.get("title") or "续写大纲",
@@ -174,6 +253,7 @@ async def generate_outline(
             )
         )
     await session.commit()
+    await _progress(progress, session, pct=98.0, message="即将完成…")
     return await get_outline(session, outline.id)
 
 

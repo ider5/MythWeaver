@@ -90,6 +90,8 @@ def _configure_sqlite_connection(dbapi_conn, _connection_record) -> None:
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA synchronous=NORMAL")
+    # 缓解短时写竞争；长事务持锁时进度落库另有快速跳过逻辑
+    cursor.execute("PRAGMA busy_timeout=30000")
     cursor.close()
 
     _load_sqlite_vec_on_connection(dbapi_conn)
@@ -105,7 +107,11 @@ async def init_db() -> None:
     engine = create_async_engine(
         settings.resolved_database_url(),
         echo=settings.debug,
-        connect_args={"check_same_thread": False},
+        connect_args={
+            "check_same_thread": False,
+            # sqlite3 层等待锁的秒数（与 PRAGMA busy_timeout 互补）
+            "timeout": 30.0,
+        },
     )
     event.listen(engine.sync_engine, "connect", _configure_sqlite_connection)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -115,6 +121,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_schema_columns(conn)
         _vec_table_ok = await _ensure_vec_table(conn, settings.embedding_dims)
 
     if is_vec_available():
@@ -129,6 +136,16 @@ async def init_db() -> None:
                 logger.info("已将 %s 条 JSON 向量回填到 vec0", n)
     else:
         logger.warning("sqlite-vec 不可用，向量检索将使用 JSON 余弦回退")
+
+
+async def _ensure_schema_columns(conn) -> None:
+    """为已有 SQLite 库补齐 create_all 不会添加的列。"""
+    rows = (await conn.execute(text("PRAGMA table_info(novels)"))).fetchall()
+    names = {r[1] for r in rows}
+    if "avg_chapter_chars" not in names:
+        await conn.execute(text("ALTER TABLE novels ADD COLUMN avg_chapter_chars INTEGER DEFAULT 0"))
+    if "median_chapter_chars" not in names:
+        await conn.execute(text("ALTER TABLE novels ADD COLUMN median_chapter_chars INTEGER DEFAULT 0"))
 
 
 async def _ensure_vec_table(conn, dims: int) -> bool:

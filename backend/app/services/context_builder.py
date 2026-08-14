@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.models import Chapter, Novel, OutlineItem, RecurrentMemory, StyleSample, Summary
 from app.services import story_bible as bible_svc
+from app.services.chapter_length import take_text_tail
 from app.services.retrieval import hybrid_search
 from app.utils.chinese_text import count_tokens
 
@@ -39,6 +39,64 @@ BUDGET = {
 }
 
 
+def _chapter_block(ch, content: str, *, tail: bool) -> str:
+    title = getattr(ch, "title", None) or ""
+    label = f"### {title}（章尾）" if tail else f"### {title}"
+    return f"{label}\n{content}"
+
+
+def format_recent_chapters(chapters, *, budget_tokens: int) -> str:
+    """最近章：能放下则用全文；超预算则优先保留上一章结尾，必要时再取再上一章结尾。"""
+    recent = list(chapters[-2:] if chapters else [])
+    if not recent:
+        return ""
+
+    def full(ch) -> str:
+        return _chapter_block(ch, ch.content or "", tail=False)
+
+    both = "\n\n".join(full(ch) for ch in recent)
+    if len(both) <= budget_tokens * 2 and count_tokens(both) <= budget_tokens:
+        return both
+
+    last = recent[-1]
+    last_full = full(last)
+    last_full_tok = count_tokens(last_full) if len(last_full) <= budget_tokens * 2 else None
+
+    if last_full_tok is not None and last_full_tok <= budget_tokens:
+        if len(recent) == 1:
+            return last_full
+        remaining = budget_tokens - last_full_tok
+        if remaining < 80:
+            return last_full
+        prev = recent[0]
+        prev_tail = take_text_tail(prev.content or "", max(40, remaining - 50))
+        combined = _chapter_block(prev, prev_tail, tail=True) + "\n\n" + last_full
+        if count_tokens(combined) <= budget_tokens:
+            return combined
+        return last_full
+
+    last_share = budget_tokens if len(recent) == 1 else max(200, int(budget_tokens * 0.65))
+    last_tail = take_text_tail(last.content or "", max(80, last_share - 50))
+    last_block = _chapter_block(last, last_tail, tail=True)
+    if len(recent) == 1:
+        return last_block
+    remaining = budget_tokens - count_tokens(last_block)
+    if remaining < 80:
+        return last_block
+    prev = recent[0]
+    prev_tail = take_text_tail(prev.content or "", max(40, remaining - 50))
+    combined = _chapter_block(prev, prev_tail, tail=True) + "\n\n" + last_block
+    guard = 0
+    while count_tokens(combined) > budget_tokens and remaining > 80 and guard < 8:
+        remaining = max(40, int(remaining * 0.8))
+        prev_tail = take_text_tail(prev.content or "", remaining)
+        combined = _chapter_block(prev, prev_tail, tail=True) + "\n\n" + last_block
+        guard += 1
+    if count_tokens(combined) > budget_tokens:
+        return last_block
+    return combined
+
+
 async def build_context(
     session: AsyncSession,
     novel: Novel,
@@ -60,12 +118,8 @@ async def build_context(
         )
     ).scalars().all()
 
-    # 最近 2 章全文（不裁剪）
+    # 最近 2 章：能放下则全文，超预算改用章尾（上一章结尾优先）
     recent = chapters[-2:] if chapters else []
-    recent_text_parts = []
-    for ch in recent:
-        recent_text_parts.append(f"### {ch.title}\n{ch.content}")
-    recent_text = "\n\n".join(recent_text_parts)
 
     # 前 5 章章摘要 + 卷摘要
     chapter_summaries = (
@@ -159,9 +213,17 @@ async def build_context(
     summaries_text = assemble_summaries(include_vol, chap_n)
     rag_text = assemble_rag(rag_n)
 
-    # 固定部分：recent + bible 不裁剪；其余按优先级裁剪
-    fixed = count_tokens(recent_text) + count_tokens(bible_text) + count_tokens(memory_text)
-    # 若 fixed 过大，仍保留但记录
+    # Story Bible / 记忆优先占预算；recent 超预算则章尾切片
+    bible_tokens = count_tokens(bible_text)
+    memory_tokens = count_tokens(memory_text)
+    min_flexible = 1500
+    recent_budget = min(
+        BUDGET["recent"],
+        max(400, total_budget - bible_tokens - memory_tokens - min_flexible),
+    )
+    recent_text = format_recent_chapters(recent, budget_tokens=recent_budget)
+
+    fixed = count_tokens(recent_text) + bible_tokens + memory_tokens
     flexible_budget = max(total_budget - fixed, 2000)
 
     style_use = style_text

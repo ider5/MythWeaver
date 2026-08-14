@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+
+const route = useRoute()
+const wide = computed(() => String(route.path).startsWith('/novels/'))
 </script>
 
 <template>
   <div class="min-h-screen">
-    <header class="border-b px-6 py-4 flex items-center justify-between" style="border-color: var(--line); background: rgba(250,247,241,.85); backdrop-filter: blur(8px);">
-      <RouterLink to="/" class="font-display text-2xl tracking-wide" style="color: var(--accent); text-decoration: none;">
-        MythWeaver
-      </RouterLink>
-      <nav class="flex gap-4 text-sm" style="color: var(--ink-muted);">
-        <RouterLink to="/" class="hover:underline">小说列表</RouterLink>
-        <RouterLink to="/import" class="hover:underline">导入</RouterLink>
+    <header class="app-header">
+      <RouterLink to="/" class="brand">MythWeaver</RouterLink>
+      <nav class="app-nav">
+        <RouterLink to="/" class="nav-link">小说列表</RouterLink>
+        <RouterLink to="/import" class="nav-link">导入</RouterLink>
       </nav>
     </header>
-    <main class="px-6 py-6 max-w-6xl mx-auto">
+    <main class="app-main" :class="{ 'app-main--wide': wide }">
       <RouterView />
     </main>
   </div>

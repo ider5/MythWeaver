@@ -80,10 +80,20 @@ onMounted(load)
 
 <template>
   <div>
-    <div class="flex gap-2 mb-4">
-      <button class="btn-ghost" :class="tab==='characters' && 'opacity-100'" @click="tab='characters'">人物卡</button>
-      <button class="btn-ghost" @click="tab='world'">世界观</button>
-      <button class="btn-ghost" @click="tab='threads'">伏笔线</button>
+    <div class="flex flex-wrap gap-2 mb-4">
+      <button
+        class="tab-btn"
+        :class="tab === 'characters' && 'tab-btn--active'"
+        @click="tab = 'characters'"
+      >
+        人物卡
+      </button>
+      <button class="tab-btn" :class="tab === 'world' && 'tab-btn--active'" @click="tab = 'world'">
+        世界观
+      </button>
+      <button class="tab-btn" :class="tab === 'threads' && 'tab-btn--active'" @click="tab = 'threads'">
+        伏笔线
+      </button>
       <button class="btn ml-auto" @click="startCreate">新增</button>
     </div>
 
@@ -95,12 +105,13 @@ onMounted(load)
           <div><label class="label">角色</label><input v-model="form.role" class="input" /></div>
           <div><label class="label">状态</label><input v-model="form.status" class="input" /></div>
         </div>
-        <div><label class="label">性格</label><textarea v-model="form.personality" class="textarea" /></div>
-        <div><label class="label">语言特征</label><textarea v-model="form.speech_style" class="textarea" /></div>
+        <div><label class="label">性格</label><textarea v-model="form.personality" class="textarea textarea-sm" /></div>
+        <div><label class="label">语言特征</label><textarea v-model="form.speech_style" class="textarea textarea-sm" /></div>
       </template>
       <template v-else-if="editing.type === 'world'">
         <div class="grid sm:grid-cols-2 gap-3">
-          <div><label class="label">分类</label>
+          <div>
+            <label class="label">分类</label>
             <select v-model="form.category" class="input">
               <option>力量体系</option><option>地理</option><option>组织</option><option>规则</option>
             </select>
@@ -108,78 +119,87 @@ onMounted(load)
           <div><label class="label">标题</label><input v-model="form.title" class="input" /></div>
         </div>
         <div><label class="label">内容</label><textarea v-model="form.content" class="textarea" /></div>
-        <div><label class="label">禁止事项</label><textarea v-model="form.do_not_violate" class="textarea" /></div>
+        <div><label class="label">禁止事项</label><textarea v-model="form.do_not_violate" class="textarea textarea-sm" /></div>
       </template>
       <template v-else>
         <div class="grid sm:grid-cols-2 gap-3">
           <div><label class="label">标题</label><input v-model="form.title" class="input" /></div>
-          <div><label class="label">类型</label>
+          <div>
+            <label class="label">类型</label>
             <select v-model="form.thread_type" class="input">
               <option>伏笔</option><option>主线</option><option>支线</option>
             </select>
           </div>
-          <div><label class="label">状态</label>
+          <div>
+            <label class="label">状态</label>
             <select v-model="form.status" class="input">
               <option>未回收</option><option>已回收</option>
             </select>
           </div>
         </div>
-        <div><label class="label">描述</label><textarea v-model="form.description" class="textarea" /></div>
+        <div><label class="label">描述</label><textarea v-model="form.description" class="textarea textarea-sm" /></div>
       </template>
       <div class="flex gap-2">
         <button class="btn" @click="save">保存</button>
-        <button class="btn-ghost" @click="editing=null">取消</button>
+        <button class="btn-ghost" @click="editing = null">取消</button>
       </div>
     </div>
 
-    <ul v-if="tab==='characters'" class="space-y-2">
-      <li v-for="c in characters" :key="c.id" class="panel px-4 py-3">
+    <ul v-if="tab === 'characters'" class="space-y-2">
+      <li v-for="c in characters" :key="c.id" class="panel cv-item px-4 py-3">
         <div class="flex justify-between gap-3">
-          <div>
-            <div class="font-medium">{{ c.name }} <span class="text-xs" style="color: var(--ink-muted)">{{ c.role }}</span></div>
-            <div class="text-xs mt-1" style="color: var(--ink-muted)">
+          <div class="min-w-0">
+            <div class="font-medium">
+              {{ c.name }} <span class="meta">{{ c.role }}</span>
+            </div>
+            <div class="meta mt-1">
               别称：{{ (c.aliases || []).join('、') || '无' }} · {{ c.status || '状态未知' }}
             </div>
-            <div v-if="c.personality" class="text-sm mt-1">{{ c.personality }}</div>
+            <div v-if="c.personality" class="text-sm mt-1" style="color: var(--ink-muted)">{{ c.personality }}</div>
           </div>
           <div class="flex gap-2 shrink-0">
             <button class="btn-ghost" @click="startEdit('characters', c)">编辑</button>
-            <button class="btn-ghost" @click="remove('characters', c.id)">删</button>
+            <button class="btn-danger" @click="remove('characters', c.id)">删</button>
           </div>
         </div>
       </li>
-      <li v-if="!characters.length" class="text-sm" style="color: var(--ink-muted)">暂无人物，入库后会自动抽取，也可手动添加。</li>
+      <li v-if="!characters.length" class="empty py-4">暂无人物，入库后会自动抽取，也可手动添加。</li>
     </ul>
 
-    <ul v-else-if="tab==='world'" class="space-y-2">
-      <li v-for="w in worlds" :key="w.id" class="panel px-4 py-3">
+    <ul v-else-if="tab === 'world'" class="space-y-2">
+      <li v-for="w in worlds" :key="w.id" class="panel cv-item px-4 py-3">
         <div class="flex justify-between gap-3">
-          <div>
+          <div class="min-w-0">
             <div class="font-medium">[{{ w.category }}] {{ w.title }}</div>
-            <div class="text-sm mt-1">{{ w.content }}</div>
-            <div v-if="w.do_not_violate" class="text-xs mt-1" style="color: var(--danger)">禁止：{{ w.do_not_violate }}</div>
+            <div class="text-sm mt-1" style="color: var(--ink-muted)">{{ w.content }}</div>
+            <div v-if="w.do_not_violate" class="meta mt-1" style="color: var(--danger)">禁止：{{ w.do_not_violate }}</div>
           </div>
           <div class="flex gap-2 shrink-0">
             <button class="btn-ghost" @click="startEdit('world', w)">编辑</button>
-            <button class="btn-ghost" @click="remove('world', w.id)">删</button>
+            <button class="btn-danger" @click="remove('world', w.id)">删</button>
           </div>
         </div>
       </li>
+      <li v-if="!worlds.length" class="empty py-4">暂无世界观条目，入库后会自动抽取，也可手动添加。</li>
     </ul>
 
     <ul v-else class="space-y-2">
-      <li v-for="t in threads" :key="t.id" class="panel px-4 py-3">
+      <li v-for="t in threads" :key="t.id" class="panel cv-item px-4 py-3">
         <div class="flex justify-between gap-3">
-          <div>
-            <div class="font-medium">{{ t.title }} <span class="text-xs">{{ t.status }}/{{ t.thread_type }}</span></div>
-            <div class="text-sm mt-1">{{ t.description }}</div>
+          <div class="min-w-0">
+            <div class="font-medium">
+              {{ t.title }}
+              <span class="meta">{{ t.status }} / {{ t.thread_type }}</span>
+            </div>
+            <div class="text-sm mt-1" style="color: var(--ink-muted)">{{ t.description }}</div>
           </div>
           <div class="flex gap-2 shrink-0">
             <button class="btn-ghost" @click="startEdit('threads', t)">编辑</button>
-            <button class="btn-ghost" @click="remove('threads', t.id)">删</button>
+            <button class="btn-danger" @click="remove('threads', t.id)">删</button>
           </div>
         </div>
       </li>
+      <li v-if="!threads.length" class="empty py-4">暂无伏笔线，入库后会自动抽取，也可手动添加。</li>
     </ul>
   </div>
 </template>

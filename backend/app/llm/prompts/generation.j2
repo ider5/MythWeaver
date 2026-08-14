@@ -7,6 +7,17 @@
 4. 本章需覆盖大纲要点
 5. 输出纯正文，不要章节元信息以外的解释
 6. 【禁止章号元指称】正文叙述中严禁出现「第N章」「第21章」「第二十一章」「本章」「上一章」「下一章」「下章」等对本书结构的引用；回忆过往情节时直接写事件、人物、地点与细节，不得用章号指称。首行可用章节标题（如「第四十章：xxx」），标题以外的叙述一律禁止章号元指称。
+7. 本章目标约 {{ target_chars | default(3000) }} 字（允许 ±20%），须接近原作单章篇幅，不得过早收束。
+
+{% include "anti_ai.j2" %}
+{% if is_segment | default(false) %}
+8. 当前为第 {{ segment_index }}/{{ segment_total }} 段，本段目标约 {{ segment_target_chars }} 字。
+{% if not is_last_segment %}
+9. 非最后一段严禁写「本章完」、大结局式收束或结束本章；本段结束后情节须可继续。
+{% else %}
+9. 本段为本章最后一段，可以收束本章情节，但仍须写满本段目标字数，不得过早收束。
+{% endif %}
+{% endif %}
 
 【题材风格提示】
 {{ genre_hints }}
@@ -18,6 +29,7 @@
 {{ memory }}
 
 【文风样本】
+模仿下列样本的句式节奏、用词习惯、对话口吻与细节密度；不要概括或复述样本的主题与情节。
 {{ style_samples }}
 
 【近期摘要】
@@ -26,7 +38,7 @@
 【相关历史情节】
 {{ rag_context }}
 
-【最近章节全文】
+【最近章节】
 {{ recent_chapters }}
 
 【本章大纲】
@@ -35,5 +47,20 @@
 要点：
 {% for p in key_points %}- {{ p }}
 {% endfor %}
+{% if is_segment | default(false) %}
 
+【本段要点】
+{% for p in segment_key_points %}- {{ p }}
+{% endfor %}
+
+【已写正文结尾（承接，勿重复）】
+{% if written_tail %}{{ written_tail }}
+{% else %}（本章开头，尚无已写正文）
+{% endif %}
+{% endif %}
+
+{% if is_segment | default(false) %}
+请直接输出本段正文（{% if segment_index == 1 %}可用「{{ chapter_title }}」作为首行标题{% else %}不要重复章节标题，从情节接续写起{% endif %}）。
+{% else %}
 请直接输出本章正文（可用「{{ chapter_title }}」作为首行标题）。
+{% endif %}

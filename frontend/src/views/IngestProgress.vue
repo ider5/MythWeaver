@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { tasksApi, type Task } from '@/api'
+import ProgressBar from '@/components/ProgressBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,18 +44,14 @@ onUnmounted(() => es?.close())
 
 <template>
   <div class="max-w-xl mx-auto panel p-6">
-    <h1 class="font-display text-2xl mb-2">入库进度</h1>
-    <p class="text-sm mb-4" style="color: var(--ink-muted)">摘要 → 实体抽取 → 向量化，可断点续传</p>
+    <h1 class="page-title text-2xl mb-1">入库进度</h1>
+    <p class="page-desc mb-5">摘要 → 实体抽取 → 向量化，可断点续传</p>
 
-    <div class="h-3 w-full mb-3" style="background: var(--bg-deep)">
-      <div
-        class="h-3 transition-all"
-        style="background: var(--accent)"
-        :style="{ width: `${task?.progress || 0}%` }"
-      />
+    <ProgressBar :value="task?.progress || 0" :failed="!!error" />
+    <div class="text-sm mt-3 tabular">
+      {{ Math.round(task?.progress || 0) }}% · {{ task?.status || '连接中' }}
     </div>
-    <div class="text-sm mb-1">{{ Math.round(task?.progress || 0) }}% · {{ task?.status || '连接中' }}</div>
-    <div class="text-sm" style="color: var(--ink-muted)">{{ task?.message }}</div>
+    <div class="meta mt-1">{{ task?.message }}</div>
     <p v-if="error" class="text-sm mt-3" style="color: var(--danger)">{{ error }}</p>
   </div>
 </template>

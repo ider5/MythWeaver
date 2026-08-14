@@ -14,6 +14,8 @@ from app.db import close_db, init_db
 from app.llm.client import MockLLMClient, set_llm_client
 from app.main import create_app
 from app.services.ingestion import ingest_novel_handler
+from app.services.generation import revise_commit_handler
+from app.services.outline import outline_generate_handler
 from app.services.tasks import get_task_queue
 
 
@@ -59,6 +61,8 @@ async def client(tmp_path, monkeypatch):
     await init_db()
     queue = get_task_queue()
     queue.register("ingest", ingest_novel_handler)
+    queue.register("revise_commit", revise_commit_handler)
+    queue.register("outline_generate", outline_generate_handler)
     app = create_app()
 
     transport = ASGITransport(app=app)
@@ -114,15 +118,23 @@ async def test_e2e_flow(client):
     bible = r.json()
     assert len(bible["characters"]) >= 1
 
-    # 大纲
+    # 大纲（异步任务）
     r = await client.post(
         f"/api/novels/{novel_id}/outlines/generate",
         json={"chapter_count": 1},
     )
     assert r.status_code == 200
+    outline_task_id = r.json()["task_id"]
+    await get_task_queue().wait_task(outline_task_id, timeout=60)
+    r = await client.get(f"/api/tasks/{outline_task_id}")
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed"
+    outline_id = r.json()["result"]["outline_id"]
+    r = await client.get(f"/api/novels/{novel_id}/outlines/{outline_id}")
+    assert r.status_code == 200
     outline = r.json()
     item_id = outline["items"][0]["id"]
-    r = await client.post(f"/api/novels/{novel_id}/outlines/{outline['id']}/confirm")
+    r = await client.post(f"/api/novels/{novel_id}/outlines/{outline_id}/confirm")
     assert r.status_code == 200
 
     # 流式生成（收集 SSE）
@@ -147,6 +159,12 @@ async def test_e2e_flow(client):
     )
     assert r.status_code == 200
     assert r.json()["version_type"] == "user_edited"
+    task_id = r.json()["task_id"]
+    assert task_id
+    await get_task_queue().wait_task(task_id, timeout=60)
+    r = await client.get(f"/api/tasks/{task_id}")
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed"
 
     # 成本
     r = await client.get("/api/costs", params={"novel_id": novel_id})

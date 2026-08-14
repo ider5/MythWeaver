@@ -14,6 +14,8 @@ export interface Novel {
   status: string
   total_chars: number
   chapter_count: number
+  avg_chapter_chars?: number
+  median_chapter_chars?: number
   created_at: string
   updated_at: string
 }
@@ -102,6 +104,9 @@ export const novelsApi = {
   list: () => api.get<Novel[]>('/novels'),
   get: (id: number) => api.get<Novel>(`/novels/${id}`),
   remove: (id: number) => api.delete(`/novels/${id}`),
+  /** 导出全书章节正文；format: txt（默认）| md */
+  exportUrl: (id: number, format: 'txt' | 'md' = 'txt') =>
+    `/api/novels/${id}/export?format=${format}`,
   previewImport: (form: FormData) =>
     api.post<ImportPreview>('/novels/import/preview', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -167,10 +172,26 @@ export const novelsApi = {
       }>
     >(`/novels/${nid}/chapters/${cid}/versions`),
   revise: (nid: number, cid: number, content: string, commit = true) =>
-    api.post(`/novels/${nid}/chapters/${cid}/revise`, {
+    api.post<{
+      id: number
+      chapter_id: number
+      version_type: string
+      content: string
+      consistency_report?: Record<string, unknown> | null
+      parent_version_id?: number | null
+      created_at: string
+      task_id?: number | null
+    }>(`/novels/${nid}/chapters/${cid}/revise`, {
       content,
       commit_to_knowledge: commit,
     }),
+  /** 仅重新入队知识库增量更新，不新建 user_edited 版本（用于入库失败重试） */
+  commitKnowledge: (nid: number, cid: number) =>
+    api.post<{
+      chapter_id: number
+      task_id: number
+      version_id?: number | null
+    }>(`/novels/${nid}/chapters/${cid}/commit-knowledge`),
   removeChapter: (nid: number, cid: number) =>
     api.delete<{
       message: string
@@ -219,7 +240,7 @@ export const bibleApi = {
 export const outlineApi = {
   list: (id: number) => api.get<Outline[]>(`/novels/${id}/outlines`),
   generate: (id: number, body: { chapter_count: number; guidance?: string }) =>
-    api.post<Outline>(`/novels/${id}/outlines/generate`, body),
+    api.post<{ task_id: number; status: string }>(`/novels/${id}/outlines/generate`, body),
   update: (nid: number, oid: number, body: unknown) =>
     api.put<Outline>(`/novels/${nid}/outlines/${oid}`, body),
   confirm: (nid: number, oid: number) => api.post<Outline>(`/novels/${nid}/outlines/${oid}/confirm`),

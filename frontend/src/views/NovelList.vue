@@ -27,43 +27,48 @@ async function remove(n: Novel) {
   await load()
 }
 
+function exportNovel(n: Novel, format: 'txt' | 'md' = 'txt') {
+  window.open(novelsApi.exportUrl(n.id, format), '_blank')
+}
+
 onMounted(load)
 </script>
 
 <template>
   <div>
-    <div class="flex items-end justify-between mb-6">
+    <div class="flex items-end justify-between gap-4 mb-6">
       <div>
-        <h1 class="font-display text-3xl mb-1">小说工作台</h1>
-        <p class="text-sm" style="color: var(--ink-muted)">导入原文 → 入库 → 大纲 → 逐章续写</p>
+        <h1 class="page-title">小说工作台</h1>
+        <p class="page-desc">导入原文 → 入库 → 大纲 → 逐章续写</p>
       </div>
       <button class="btn" @click="router.push('/import')">导入小说</button>
     </div>
 
-    <p v-if="loading" class="text-sm" style="color: var(--ink-muted)">加载中…</p>
+    <p v-if="loading" class="empty">加载中…</p>
     <p v-else-if="error" class="text-sm" style="color: var(--danger)">{{ error }}</p>
-    <p v-else-if="!novels.length" class="text-sm" style="color: var(--ink-muted)">
+    <p v-else-if="!novels.length" class="empty">
       还没有小说，先
       <button class="underline" @click="router.push('/import')">导入一部</button>
     </p>
 
-    <ul v-else class="space-y-3">
+    <ul v-else class="space-y-2">
       <li
         v-for="n in novels"
         :key="n.id"
-        class="panel px-4 py-3 flex items-center justify-between gap-4 cursor-pointer"
+        class="panel cv-item px-4 py-3.5 flex items-center justify-between gap-4 cursor-pointer"
         @click="router.push(`/novels/${n.id}/bible`)"
       >
-        <div>
-          <div class="font-display text-xl">{{ n.title }}</div>
-          <div class="text-xs mt-1" style="color: var(--ink-muted)">
+        <div class="min-w-0">
+          <div class="font-display text-lg leading-snug truncate">{{ n.title }}</div>
+          <div class="meta mt-1 tabular">
             {{ n.genre }} · {{ n.chapter_count }} 章 · {{ n.total_chars }} 字 · {{ n.status }}
             <span v-if="n.author"> · {{ n.author }}</span>
           </div>
         </div>
-        <div class="flex gap-2" @click.stop>
+        <div class="flex gap-2 shrink-0" @click.stop>
           <button class="btn-ghost" @click="router.push(`/novels/${n.id}/write`)">续写</button>
-          <button class="btn-ghost" @click="remove(n)">删除</button>
+          <button class="btn-ghost" title="导出为 TXT" @click="exportNovel(n, 'txt')">导出</button>
+          <button class="btn-danger" @click="remove(n)">删除</button>
         </div>
       </li>
     </ul>

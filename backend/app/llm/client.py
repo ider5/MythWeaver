@@ -86,20 +86,21 @@ class LLMClient:
         *,
         endpoint: ModelEndpoint | None = None,
         temperature: float = 0.8,
-        max_tokens: int = 6000,
+        max_tokens: int | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """流式增量统一为 {delta_text}，结束时 yield {done, text, input_tokens, output_tokens}。"""
         ep = endpoint or self.generation_endpoint()
         msgs = self._normalize(messages)
-        est = sum(count_tokens(m["content"]) for m in msgs) + max_tokens
+        mt = max_tokens if max_tokens is not None else self.settings.generation_max_tokens
+        est = sum(count_tokens(m["content"]) for m in msgs) + mt
         await self.limiter.acquire(est)
 
         async with get_llm_concurrency_gate():
             if ep.provider == "anthropic":
-                async for chunk in self._anthropic_stream(ep, msgs, temperature, max_tokens):
+                async for chunk in self._anthropic_stream(ep, msgs, temperature, mt):
                     yield chunk
             else:
-                async for chunk in self._openai_stream(ep, msgs, temperature, max_tokens):
+                async for chunk in self._openai_stream(ep, msgs, temperature, mt):
                     yield chunk
 
     async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
@@ -357,6 +358,7 @@ class MockLLMClient(LLMClient):
         self.stream_error = stream_error
         self.stream_chunk_delay = stream_chunk_delay
         self._chat_idx = 0
+        self.stream_calls: list[dict[str, Any]] = []
 
     def _smart_response(self, messages: list[dict[str, str]]) -> str:
         blob = "\n".join(m["content"] for m in messages)
@@ -444,6 +446,8 @@ class MockLLMClient(LLMClient):
         import asyncio
 
         ep = endpoint or self.generation_endpoint()
+        msgs = self._normalize(messages)
+        self.stream_calls.append({"max_tokens": max_tokens, "messages": msgs})
         for ch in self.stream_text:
             if self.stream_chunk_delay > 0:
                 await asyncio.sleep(self.stream_chunk_delay)

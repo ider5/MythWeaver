@@ -34,6 +34,9 @@ class ConfigOut(BaseModel):
     generation_model: str
     embedding_model: str
     context_token_budget: int
+    generation_max_tokens: int = 8000
+    chapter_segment_threshold: int = 4500
+    segment_target_chars: int = 3000
     has_summary_key: bool
     has_generation_key: bool
     has_embedding_key: bool

@@ -116,6 +116,9 @@ async def get_config():
         generation_model=s.generation_model,
         embedding_model=s.embedding_model,
         context_token_budget=s.context_token_budget,
+        generation_max_tokens=s.generation_max_tokens,
+        chapter_segment_threshold=s.chapter_segment_threshold,
+        segment_target_chars=s.segment_target_chars,
         has_summary_key=bool(s.summary_api_key and not s.summary_api_key.startswith("sk-your")),
         has_generation_key=bool(
             s.generation_api_key and not s.generation_api_key.startswith("sk-your")

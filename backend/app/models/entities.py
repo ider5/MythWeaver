@@ -35,6 +35,9 @@ class Novel(Base):
     # imported | ingesting | ready | generating
     total_chars: Mapped[int] = mapped_column(Integer, default=0)
     chapter_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 原作（非生成）单章篇幅缓存；0 表示尚未统计
+    avg_chapter_chars: Mapped[int] = mapped_column(Integer, default=0)
+    median_chapter_chars: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

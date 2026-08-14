@@ -7,6 +7,7 @@ class GenerateChapterIn(BaseModel):
     outline_item_id: int
     run_critic: bool = True
     max_critic_rounds: int = Field(default=2, ge=0, le=2)
+    target_chars: Optional[int] = Field(default=None, ge=500, le=30000)
 
 
 class ConsistencyIssue(BaseModel):

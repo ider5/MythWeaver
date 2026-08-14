@@ -164,3 +164,59 @@ async def test_chapter_by_outline_item_not_found(client):
 
     r = await client.get(f"/api/novels/{novel_id}/chapters/by-outline-item/99999")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_chapter_by_outline_item_falls_back_by_index_and_rebinds(client):
+    """outline_item_id 解绑后，仍可按目标章号回载，并重新绑定 FK。"""
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel = Novel(title="解绑回退", genre="玄幻", status="ready", chapter_count=40)
+        session.add(novel)
+        await session.flush()
+        outline = Outline(
+            novel_id=novel.id,
+            title="续写",
+            status="confirmed",
+            start_from_chapter=40,
+        )
+        session.add(outline)
+        await session.flush()
+        item = OutlineItem(
+            outline_id=outline.id,
+            order=1,
+            title="第四十章：白发鬼手",
+            summary="s",
+            key_points=["a"],
+            status="done",
+        )
+        session.add(item)
+        await session.flush()
+        chapter = Chapter(
+            novel_id=novel.id,
+            index=40,
+            title="第四十章：白发鬼手",
+            content="已生成但 outline_item_id 为空",
+            char_count=14,
+            status="embedded",
+            is_generated=True,
+            outline_item_id=None,  # 模拟解绑 / 旧数据
+        )
+        session.add(chapter)
+        await session.commit()
+        novel_id = novel.id
+        item_id = item.id
+        chapter_id = chapter.id
+
+    r = await client.get(f"/api/novels/{novel_id}/chapters/by-outline-item/{item_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == chapter_id
+    assert body["index"] == 40
+    assert "outline_item_id 为空" in (body.get("content") or "")
+    assert body["outline_item_id"] == item_id
+
+    async with db_mod.SessionLocal() as session:
+        ch = await session.get(Chapter, chapter_id)
+        assert ch is not None
+        assert ch.outline_item_id == item_id

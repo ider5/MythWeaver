@@ -12,6 +12,8 @@ from app.config import get_settings
 from app.db import close_db, init_db
 from app.routers import generation, novels, outline, story_bible, tasks
 from app.services.ingestion import ingest_novel_handler
+from app.services.generation import revise_commit_handler
+from app.services.outline import outline_generate_handler
 from app.services.tasks import get_task_queue
 
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +26,8 @@ async def lifespan(_app: FastAPI):
     await init_db()
     queue = get_task_queue()
     queue.register("ingest", ingest_novel_handler)
+    queue.register("revise_commit", revise_commit_handler)
+    queue.register("outline_generate", outline_generate_handler)
     logger.info("MythWeaver 已启动，数据目录: %s", settings.data_dir)
     yield
     await close_db()

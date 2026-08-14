@@ -29,6 +29,8 @@ class NovelOut(ORMModel):
     status: str
     total_chars: int
     chapter_count: int
+    avg_chapter_chars: int = 0
+    median_chapter_chars: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -97,3 +99,11 @@ class ChapterReviseOut(ORMModel):
     parent_version_id: Optional[int] = None
     created_at: datetime
     task_id: Optional[int] = None
+
+
+class CommitKnowledgeOut(BaseModel):
+    """仅重新入队知识库更新，不新建版本。"""
+
+    chapter_id: int
+    task_id: int
+    version_id: Optional[int] = None

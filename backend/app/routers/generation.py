@@ -48,6 +48,7 @@ async def generate_chapter(
                 body.outline_item_id,
                 run_critic=body.run_critic,
                 max_critic_rounds=body.max_critic_rounds,
+                target_chars=body.target_chars,
             ):
                 yield evt
 
@@ -60,6 +61,7 @@ async def generate_chapter_sse(
     outline_item_id: int = Query(...),
     run_critic: bool = Query(True),
     max_critic_rounds: int = Query(2),
+    target_chars: int | None = Query(default=None),
 ):
     """EventSource 友好的 GET SSE。"""
 
@@ -78,6 +80,7 @@ async def generate_chapter_sse(
                 outline_item_id,
                 run_critic=run_critic,
                 max_critic_rounds=max_critic_rounds,
+                target_chars=target_chars,
             ):
                 yield evt
 

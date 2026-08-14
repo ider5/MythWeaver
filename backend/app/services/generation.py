@@ -9,12 +9,20 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.llm.client import get_llm_client
 from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, ChapterVersion, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services.consistency import run_critic_loop
 from app.services.context_builder import build_context
+from app.services.chapter_length import (
+    ending_slice,
+    estimate_generation_max_tokens,
+    plan_chapter_segments,
+    refresh_original_chapter_stats,
+    resolve_target_chars,
+)
 from app.services.ingestion import incremental_update_chapter
 from app.services.retrieval import delete_chapter_embedding
 from app.utils.chinese_text import count_chars
@@ -26,6 +34,60 @@ logger = logging.getLogger(__name__)
 def resolve_target_chapter_index(*, start_from_chapter: int, order: int) -> int:
     """大纲条目对应的绝对章号：start_from_chapter + order - 1。"""
     return int(start_from_chapter) + int(order) - 1
+
+
+async def find_chapter_by_outline_item(
+    session: AsyncSession,
+    *,
+    novel_id: int,
+    outline_item_id: int,
+    rebind: bool = True,
+) -> Chapter | None:
+    """按大纲条目取已生成章节；FK 解绑时按目标章号回退，并可重新绑定。
+
+    查找顺序：
+    1. Chapter.outline_item_id == outline_item_id
+    2. 由大纲 start_from_chapter + item.order 算出 index，按 (novel_id, index) 查找
+    若走回退且 rebind=True，写回 outline_item_id 以便后续直接命中。
+    """
+    ch = (
+        await session.execute(
+            select(Chapter).where(
+                Chapter.novel_id == novel_id,
+                Chapter.outline_item_id == outline_item_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if ch is not None:
+        return ch
+
+    item = await session.get(OutlineItem, outline_item_id)
+    if item is None:
+        return None
+    outline = await session.get(Outline, item.outline_id)
+    if outline is None or outline.novel_id != novel_id:
+        return None
+
+    target_index = resolve_target_chapter_index(
+        start_from_chapter=outline.start_from_chapter,
+        order=item.order,
+    )
+    ch = (
+        await session.execute(
+            select(Chapter).where(
+                Chapter.novel_id == novel_id,
+                Chapter.index == target_index,
+            )
+        )
+    ).scalar_one_or_none()
+    if ch is None:
+        return None
+
+    if rebind and ch.outline_item_id != outline_item_id:
+        ch.outline_item_id = outline_item_id
+        await session.commit()
+        await session.refresh(ch)
+    return ch
 
 
 async def _resolve_generation_index(
@@ -125,6 +187,7 @@ async def stream_generate_chapter(
     *,
     run_critic: bool = True,
     max_critic_rounds: int = 2,
+    target_chars: int | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """SSE 事件：delta / status / done / error。"""
     novel = await session.get(Novel, novel_id)
@@ -141,56 +204,114 @@ async def stream_generate_chapter(
         novel.status = "generating"
         await session.commit()
 
+        settings = get_settings()
+        resolved_target = await resolve_target_chars(session, novel, target_chars)
+        segments = plan_chapter_segments(resolved_target, item.key_points or [])
+        segmented = len(segments) > 1
+
         yield {"event": "status", "message": "组装上下文…"}
         ctx = await build_context(session, novel, item)
 
-        prompt = render(
-            "generation.j2",
-            genre=novel.genre or "玄幻",
-            genre_hints=ctx.genre_hints,
-            story_bible=ctx.story_bible or "（空）",
-            memory=ctx.memory or "（空）",
-            style_samples=ctx.style_samples or "（无）",
-            summaries=ctx.summaries or "（无）",
-            rag_context=ctx.rag_context or "（无）",
-            recent_chapters=ctx.recent_chapters or "（无）",
-            chapter_title=item.title,
-            chapter_summary=item.summary,
-            key_points=item.key_points or [],
-        )
+        if segmented:
+            yield {
+                "event": "status",
+                "message": f"本章目标约 {resolved_target} 字，将分 {len(segments)} 段撰写…",
+                "context_tokens": ctx.total_tokens,
+                "target_chars": resolved_target,
+                "segment_count": len(segments),
+            }
+        else:
+            yield {
+                "event": "status",
+                "message": f"本章目标约 {resolved_target} 字，开始流式生成…",
+                "context_tokens": ctx.total_tokens,
+                "target_chars": resolved_target,
+            }
 
-        yield {"event": "status", "message": "开始流式生成…", "context_tokens": ctx.total_tokens}
         client = get_llm_client()
-        content = ""
-        usage = {"input_tokens": 0, "output_tokens": 0, "provider": "", "model": ""}
-        async for chunk in client.stream(
-            [
-                {"role": "system", "content": "你是专业网文作者，只输出章节正文。"},
-                {"role": "user", "content": prompt},
-            ],
-            endpoint=client.generation_endpoint(),
-        ):
-            if "delta_text" in chunk:
-                yield {"event": "delta", "text": chunk["delta_text"]}
-            if chunk.get("done"):
-                content = chunk.get("text") or content
-                usage = {
-                    "input_tokens": chunk.get("input_tokens", 0),
-                    "output_tokens": chunk.get("output_tokens", 0),
-                    "provider": chunk.get("provider", ""),
-                    "model": chunk.get("model", ""),
-                }
+        parts: list[str] = []
+        usage_in = 0
+        usage_out = 0
+        usage_provider = ""
+        usage_model = ""
 
-        if not (content or "").strip():
-            raise RuntimeError("模型未返回正文（流式结果为空）")
+        for seg in segments:
+            if segmented:
+                yield {
+                    "event": "status",
+                    "message": f"正在撰写第 {seg.index}/{seg.total} 段…",
+                }
+            written = "\n\n".join(parts)
+            prompt = render(
+                "generation.j2",
+                genre=novel.genre or "玄幻",
+                genre_hints=ctx.genre_hints,
+                story_bible=ctx.story_bible or "（空）",
+                memory=ctx.memory or "（空）",
+                style_samples=ctx.style_samples or "（无）",
+                summaries=ctx.summaries or "（无）",
+                rag_context=ctx.rag_context or "（无）",
+                recent_chapters=ctx.recent_chapters or "（无）",
+                chapter_title=item.title,
+                chapter_summary=item.summary,
+                key_points=item.key_points or [],
+                target_chars=resolved_target,
+                is_segment=segmented,
+                segment_index=seg.index,
+                segment_total=seg.total,
+                segment_target_chars=seg.target_chars,
+                segment_key_points=seg.key_points,
+                written_tail=ending_slice(written, 2000),
+                is_last_segment=seg.is_last,
+            )
+            if segmented:
+                max_tokens = estimate_generation_max_tokens(
+                    seg.target_chars,
+                    min_tokens=settings.segment_min_tokens,
+                    max_tokens=settings.segment_max_tokens,
+                )
+            else:
+                max_tokens = estimate_generation_max_tokens(
+                    resolved_target,
+                    min_tokens=1024,
+                    max_tokens=settings.generation_max_tokens,
+                )
+
+            seg_text = ""
+            async for chunk in client.stream(
+                [
+                    {"role": "system", "content": "你是专业网文作者，只输出章节正文。先写可感知场面，禁止套话、作者总结与说明文对白。"},
+                    {"role": "user", "content": prompt},
+                ],
+                endpoint=client.generation_endpoint(),
+                max_tokens=max_tokens,
+            ):
+                if "delta_text" in chunk:
+                    yield {"event": "delta", "text": chunk["delta_text"]}
+                if chunk.get("done"):
+                    seg_text = chunk.get("text") or seg_text
+                    usage_in += int(chunk.get("input_tokens", 0) or 0)
+                    usage_out += int(chunk.get("output_tokens", 0) or 0)
+                    usage_provider = chunk.get("provider", "") or usage_provider
+                    usage_model = chunk.get("model", "") or usage_model
+
+            if not (seg_text or "").strip():
+                raise RuntimeError(
+                    f"模型未返回正文（第 {seg.index}/{seg.total} 段流式结果为空）"
+                    if segmented
+                    else "模型未返回正文（流式结果为空）"
+                )
+            parts.append(seg_text.strip())
+
+        content = "\n\n".join(parts)
 
         await log_cost(
             session,
             purpose="generation",
-            provider=usage["provider"],
-            model=usage["model"],
-            input_tokens=int(usage["input_tokens"]),
-            output_tokens=int(usage["output_tokens"]),
+            provider=usage_provider,
+            model=usage_model,
+            input_tokens=usage_in,
+            output_tokens=usage_out,
             novel_id=novel_id,
         )
 
@@ -208,14 +329,21 @@ async def stream_generate_chapter(
             yield {"event": "status", "message": "章节已存在，已覆盖生成"}
 
         consistency_data = None
-        if run_critic and max_critic_rounds >= 0:
-            yield {"event": "status", "message": "一致性校验与 Critic…"}
+        critic_rounds_cap = 0 if segmented else max_critic_rounds
+        if run_critic and critic_rounds_cap >= 0:
+            if segmented:
+                yield {
+                    "event": "status",
+                    "message": "长章仅做一致性审查，跳过整章重写…",
+                }
+            else:
+                yield {"event": "status", "message": "一致性校验与 Critic…"}
             revised, report, initial = await run_critic_loop(
                 session,
                 novel,
                 content,
                 recent_tail=ctx.recent_chapters,
-                max_rounds=max_critic_rounds,
+                max_rounds=critic_rounds_cap,
             )
             consistency_data = report.model_dump()
             if revised != content:
@@ -252,6 +380,8 @@ async def stream_generate_chapter(
             "consistency": consistency_data,
             "overwritten": overwritten,
             "chapter_index": next_index,
+            "target_chars": resolved_target,
+            "segment_count": len(segments),
         }
     except Exception as exc:  # noqa: BLE001
         logger.exception("stream_generate_chapter failed novel=%s item=%s", novel_id, outline_item_id)
@@ -351,6 +481,7 @@ async def delete_chapter(session: AsyncSession, novel_id: int, chapter_id: int) 
         )
         novel.chapter_count = int(max_index) if max_index is not None else 0
         novel.total_chars = max(0, (novel.total_chars or 0) - char_count)
+        await refresh_original_chapter_stats(session, novel)
 
     await session.commit()
     return {
@@ -447,13 +578,50 @@ async def delete_chapter_version(
     }
 
 
+async def enqueue_revise_commit(
+    session: AsyncSession,
+    chapter_id: int,
+    *,
+    version_id: int | None = None,
+) -> int:
+    """仅入队 revise_commit（增量入库），不新建 user_edited 版本。"""
+    chapter = await session.get(Chapter, chapter_id)
+    if chapter is None:
+        raise ValueError("章节不存在")
+    if version_id is None:
+        latest = (
+            await session.execute(
+                select(ChapterVersion)
+                .where(ChapterVersion.chapter_id == chapter_id)
+                .order_by(ChapterVersion.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        version_id = latest.id if latest else None
+
+    from app.services.tasks import get_task_queue
+
+    task = await get_task_queue().enqueue(
+        session,
+        task_type="revise_commit",
+        novel_id=chapter.novel_id,
+        message="修订入库排队中",
+        result={"chapter_id": chapter.id, "version_id": version_id},
+    )
+    return task.id
+
+
 async def revise_and_commit(
     session: AsyncSession,
     chapter_id: int,
     content: str,
     *,
     commit_to_knowledge: bool = True,
-) -> ChapterVersion:
+) -> tuple[ChapterVersion, int | None]:
+    """保存用户修订版本；若 commit_to_knowledge 则异步跑增量入库。
+
+    返回 (version, task_id)。未提交知识库时 task_id 为 None。
+    """
     chapter = await session.get(Chapter, chapter_id)
     if chapter is None:
         raise ValueError("章节不存在")
@@ -478,11 +646,34 @@ async def revise_and_commit(
     await session.commit()
     await session.refresh(ver)
 
+    task_id: int | None = None
     if commit_to_knowledge:
-        await incremental_update_chapter(session, chapter)
-        await update_recurrent_memory(session, chapter.novel_id, chapter)
-        novel = await session.get(Novel, chapter.novel_id)
-        if novel and chapter.index > novel.chapter_count:
-            novel.chapter_count = chapter.index
-            await session.commit()
-    return ver
+        task_id = await enqueue_revise_commit(session, chapter_id, version_id=ver.id)
+    return ver, task_id
+
+
+async def revise_commit_handler(session: AsyncSession, task, progress) -> dict:
+    """异步：摘要 → 实体 → 向量化 → 递归记忆。"""
+    payload = task.result or {}
+    chapter_id = payload.get("chapter_id")
+    version_id = payload.get("version_id")
+    if not chapter_id:
+        raise ValueError("缺少 chapter_id")
+
+    chapter = await session.get(Chapter, chapter_id)
+    if chapter is None:
+        raise ValueError("章节不存在")
+
+    await progress.update(session, progress=8.0, message="准备增量入库…")
+    await incremental_update_chapter(session, chapter, progress=progress)
+
+    await progress.update(session, progress=88.0, message="更新递归记忆…")
+    await update_recurrent_memory(session, chapter.novel_id, chapter)
+
+    novel = await session.get(Novel, chapter.novel_id)
+    if novel and chapter.index > novel.chapter_count:
+        novel.chapter_count = chapter.index
+        await session.commit()
+
+    await progress.update(session, progress=98.0, message="即将完成…")
+    return {"ok": True, "chapter_id": chapter_id, "version_id": version_id}

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +15,9 @@ from app.schemas.novel import (
     ChapterOut,
     ChapterPreview,
     ChapterReviseIn,
+    ChapterReviseOut,
     ChapterVersionOut,
+    CommitKnowledgeOut,
     ImportConfirmIn,
     ImportPreviewOut,
     NovelCreate,
@@ -20,9 +25,42 @@ from app.schemas.novel import (
     NovelUpdate,
 )
 from app.services import ingestion
-from app.services.generation import delete_chapter, delete_chapter_version, revise_and_commit
+from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.generation import (
+    delete_chapter,
+    delete_chapter_version,
+    enqueue_revise_commit,
+    find_chapter_by_outline_item,
+    revise_and_commit,
+)
 
 router = APIRouter(prefix="/api/novels", tags=["novels"])
+
+
+def _safe_filename(title: str, ext: str) -> str:
+    name = (title or "未命名").strip() or "未命名"
+    for ch in '\\/:*?"<>|\r\n':
+        name = name.replace(ch, "_")
+    return f"{name}.{ext}"
+
+
+def _content_disposition(filename: str, ext: str) -> str:
+    """ASCII fallback + RFC 5987，兼容中文书名。"""
+    ascii_name = f"novel.{ext}"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _build_export_text(chapters: list[Chapter], fmt: str) -> str:
+    parts: list[str] = []
+    for ch in chapters:
+        title = (ch.title or "").strip() or f"第{ch.index}章"
+        body = ch.content or ""
+        if fmt == "md":
+            block = f"# {title}\n\n{body}".rstrip()
+        else:
+            block = f"{title}\n\n{body}".rstrip()
+        parts.append(block)
+    return "\n\n".join(parts)
 
 
 @router.get("", response_model=list[NovelOut])
@@ -45,6 +83,10 @@ async def get_novel(novel_id: int, session: AsyncSession = Depends(get_session))
     novel = await session.get(Novel, novel_id)
     if not novel:
         raise HTTPException(404, "小说不存在")
+    if (novel.median_chapter_chars or 0) <= 0 and (novel.avg_chapter_chars or 0) <= 0:
+        await refresh_original_chapter_stats(session, novel)
+        await session.commit()
+        await session.refresh(novel)
     return novel
 
 
@@ -68,6 +110,37 @@ async def delete_novel(novel_id: int, session: AsyncSession = Depends(get_sessio
     await session.delete(novel)
     await session.commit()
     return {"message": "已删除"}
+
+
+@router.get("/{novel_id}/export")
+async def export_novel(
+    novel_id: int,
+    fmt: str = Query("txt", alias="format"),
+    session: AsyncSession = Depends(get_session),
+):
+    """导出小说当前章节正文为 txt / md 文件下载。"""
+    fmt = (fmt or "txt").lower().strip()
+    if fmt not in ("txt", "md"):
+        raise HTTPException(400, "format 仅支持 txt 或 md")
+
+    novel = await session.get(Novel, novel_id)
+    if not novel:
+        raise HTTPException(404, "小说不存在")
+
+    chapters = (
+        await session.execute(
+            select(Chapter).where(Chapter.novel_id == novel_id).order_by(Chapter.index)
+        )
+    ).scalars().all()
+
+    body = _build_export_text(list(chapters), fmt)
+    filename = _safe_filename(novel.title, fmt)
+    media = "text/markdown; charset=utf-8" if fmt == "md" else "text/plain; charset=utf-8"
+    return Response(
+        content=body.encode("utf-8"),
+        media_type=media,
+        headers={"Content-Disposition": _content_disposition(filename, fmt)},
+    )
 
 
 @router.post("/import/preview", response_model=ImportPreviewOut)
@@ -144,15 +217,13 @@ async def get_chapter_by_outline_item(
     outline_item_id: int,
     session: AsyncSession = Depends(get_session),
 ):
-    """按大纲条目取已生成章节正文（续写页刷新回载用）。"""
-    ch = (
-        await session.execute(
-            select(Chapter).where(
-                Chapter.novel_id == novel_id,
-                Chapter.outline_item_id == outline_item_id,
-            )
-        )
-    ).scalar_one_or_none()
+    """按大纲条目取已生成章节正文（续写页刷新回载用）。
+
+    若 outline_item_id 因删大纲/重建而解绑，按目标章号回退查找并重新绑定。
+    """
+    ch = await find_chapter_by_outline_item(
+        session, novel_id=novel_id, outline_item_id=outline_item_id
+    )
     if not ch:
         raise HTTPException(404, "该大纲条目尚无已生成章节")
     return ChapterOut(
@@ -203,7 +274,7 @@ async def list_versions(novel_id: int, chapter_id: int, session: AsyncSession = 
     return rows
 
 
-@router.post("/{novel_id}/chapters/{chapter_id}/revise", response_model=ChapterVersionOut)
+@router.post("/{novel_id}/chapters/{chapter_id}/revise", response_model=ChapterReviseOut)
 async def revise_chapter(
     novel_id: int,
     chapter_id: int,
@@ -213,10 +284,51 @@ async def revise_chapter(
     ch = await session.get(Chapter, chapter_id)
     if not ch or ch.novel_id != novel_id:
         raise HTTPException(404, "章节不存在")
-    ver = await revise_and_commit(
+    ver, task_id = await revise_and_commit(
         session, chapter_id, body.content, commit_to_knowledge=body.commit_to_knowledge
     )
-    return ver
+    return ChapterReviseOut(
+        id=ver.id,
+        chapter_id=ver.chapter_id,
+        version_type=ver.version_type,
+        content=ver.content,
+        consistency_report=ver.consistency_report,
+        parent_version_id=ver.parent_version_id,
+        created_at=ver.created_at,
+        task_id=task_id,
+    )
+
+
+@router.post(
+    "/{novel_id}/chapters/{chapter_id}/commit-knowledge",
+    response_model=CommitKnowledgeOut,
+)
+async def commit_chapter_knowledge(
+    novel_id: int,
+    chapter_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """重试/仅重新入队知识库增量更新，不新建 user_edited 版本。"""
+    ch = await session.get(Chapter, chapter_id)
+    if not ch or ch.novel_id != novel_id:
+        raise HTTPException(404, "章节不存在")
+    try:
+        task_id = await enqueue_revise_commit(session, chapter_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    latest = (
+        await session.execute(
+            select(ChapterVersion)
+            .where(ChapterVersion.chapter_id == chapter_id)
+            .order_by(ChapterVersion.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return CommitKnowledgeOut(
+        chapter_id=chapter_id,
+        task_id=task_id,
+        version_id=latest.id if latest else None,
+    )
 
 
 @router.delete("/{novel_id}/chapters/{chapter_id}/versions/{version_id}")

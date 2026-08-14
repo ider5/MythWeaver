@@ -18,6 +18,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, Novel, StyleSample, Summary
 from app.services import story_bible as bible_svc
+from app.services.chapter_length import refresh_original_chapter_stats
 from app.services.retrieval import embed_and_store, embed_and_store_batch
 from app.services.tasks import TaskProgress, get_task_queue
 from app.utils.chinese_text import (
@@ -140,6 +141,7 @@ async def confirm_import(
                 status="raw",
             )
         )
+    await refresh_original_chapter_stats(session, novel)
     await session.commit()
     await session.refresh(novel)
     return novel
@@ -236,6 +238,8 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
     await progress.update(session, progress=96.0, message="提取文风样本")
     await _extract_style_samples(session, novel)
 
+    novel = await session.get(Novel, novel_id) or novel
+    await refresh_original_chapter_stats(session, novel)
     novel.status = "ready"
     await session.commit()
     return {"chapter_count": total, "novel_id": novel_id}
@@ -488,13 +492,23 @@ async def _extract_style_samples(session: AsyncSession, novel: Novel) -> None:
     await session.commit()
 
 
-async def incremental_update_chapter(session: AsyncSession, chapter: Chapter) -> None:
+async def incremental_update_chapter(
+    session: AsyncSession,
+    chapter: Chapter,
+    progress: TaskProgress | None = None,
+) -> None:
     """新章确认入库后的增量更新。"""
     novel = await session.get(Novel, chapter.novel_id)
     if novel is None:
         return
+
+    async def _p(pct: float, message: str) -> None:
+        if progress is not None:
+            # 独立短事务落库；业务事务持锁时跳过落库，SSE 仍靠内存推送
+            await progress.update(session, progress=pct, message=message)
+
     # 重置状态以重新跑摘要/抽取/向量
-    # 删除旧摘要
+    # 删除旧摘要（与后续重写同属一笔事务，失败可整体 rollback）
     old = (
         await session.execute(
             select(Summary).where(Summary.chapter_id == chapter.id, Summary.level == "chapter")
@@ -504,8 +518,10 @@ async def incremental_update_chapter(session: AsyncSession, chapter: Chapter) ->
         await session.delete(s)
     await session.flush()
     chapter.status = "raw"
+    await _p(15.0, "生成章节摘要…")
     await _summarize_chapter(session, novel, chapter)
     chapter.status = "summarized"
+    await _p(40.0, "抽取实体与设定…")
     await _extract_chapter(session, novel, chapter)
     chapter.status = "extracted"
     summary = (
@@ -514,11 +530,20 @@ async def incremental_update_chapter(session: AsyncSession, chapter: Chapter) ->
         )
     ).scalar_one_or_none()
     text_for_embed = summary.content if summary else chapter.content[:4000]
+    await _p(65.0, "向量化章节…")
     try:
         await embed_and_store(session, chapter, text_for_embed, novel_id=novel.id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("增量向量化失败: %s", exc)
     chapter.status = "embedded"
     novel.chapter_count = max(novel.chapter_count, chapter.index)
-    novel.total_chars = (novel.total_chars or 0) + chapter.char_count
+    # 按全书章节重算，避免修订/重试入库时重复累加
+    char_sum = (
+        await session.execute(
+            select(Chapter.char_count).where(Chapter.novel_id == novel.id)
+        )
+    ).scalars().all()
+    novel.total_chars = sum(c or 0 for c in char_sum)
+    await refresh_original_chapter_stats(session, novel)
     await session.commit()
+    await _p(80.0, "章节向量化完成")

@@ -3,7 +3,10 @@
 
 【修订硬性要求】
 - 若问题含 chapter_meta：删除或改写所有「第N章/本章/上一章/下一章/下章」等章号元指称；回忆改为直接叙述事件、人物与细节。
+- 若问题含 ai_voice：只改套话句与作者总结句，换成具体场面、动作、身体反应或有口吻差异的对话；禁止整章重写，禁止另起情节。
 - 首行若已是章节标题可保留；正文叙述中不得再出现章号元指称，也不得新引入此类说法。
+
+{% include "anti_ai.j2" %}
 
 问题清单：
 {% for issue in issues %}- [{{ issue.severity }}] {{ issue.type }}: {{ issue.message }}{% if issue.detail %}（{{ issue.detail }}）{% endif %}

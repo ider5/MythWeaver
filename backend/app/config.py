@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # 续写 SSE 心跳间隔；前端空闲超时建议 > 2× 此值
     sse_heartbeat_interval: float = 12.0
 
+    # 续写篇幅：单次 max_tokens 上限、长章分段
+    generation_max_tokens: int = 8000
+    chapter_segment_threshold: int = 4500
+    segment_target_chars: int = 3000
+    segment_min_tokens: int = 4000
+    segment_max_tokens: int = 8000
+    chapter_length_min: int = 1500
+    chapter_length_max: int = 30000
+
     # 成本单价 USD / 1M tokens
     cost_summary_input: float = 0.15
     cost_summary_output: float = 0.60

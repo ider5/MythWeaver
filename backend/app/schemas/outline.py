@@ -12,6 +12,13 @@ class OutlineGenerateIn(BaseModel):
     start_from_chapter: Optional[int] = None
 
 
+class OutlineGenerateTaskOut(BaseModel):
+    """异步生成大纲：立即返回 task_id，通过 SSE 跟踪进度。"""
+
+    task_id: int
+    status: str
+
+
 class OutlineItemIn(BaseModel):
     order: int
     title: str = ""
