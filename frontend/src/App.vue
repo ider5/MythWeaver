@@ -9,7 +9,10 @@ const wide = computed(() => String(route.path).startsWith('/novels/'))
 <template>
   <div class="min-h-screen">
     <header class="app-header">
-      <RouterLink to="/" class="brand">MythWeaver</RouterLink>
+      <RouterLink to="/" class="brand">
+        <span class="brand-mark" aria-hidden="true">织</span>
+        MythWeaver
+      </RouterLink>
       <nav class="app-nav">
         <RouterLink to="/" class="nav-link">小说列表</RouterLink>
         <RouterLink to="/import" class="nav-link">导入</RouterLink>

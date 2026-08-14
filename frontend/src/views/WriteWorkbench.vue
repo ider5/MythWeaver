@@ -518,8 +518,11 @@ onUnmounted(() => {
 
 <template>
   <div class="grid lg:grid-cols-[16.5rem_minmax(0,1fr)] gap-6">
-    <aside class="panel p-2 space-y-0.5 max-h-[calc(100vh-7rem)] overflow-auto lg:sticky lg:top-[4.25rem]">
-      <div class="px-2 py-2 meta">选择大纲条目</div>
+    <aside class="panel p-2.5 space-y-0.5 max-h-[calc(100vh-7rem)] overflow-auto lg:sticky lg:top-[4.5rem]">
+      <div class="px-2 py-2 flex items-center justify-between">
+        <span class="meta">大纲条目</span>
+        <span v-if="outline?.items?.length" class="meta tabular">{{ outline.items.length }}</span>
+      </div>
       <button
         v-for="item in outline?.items || []"
         :key="item.id"
@@ -529,45 +532,54 @@ onUnmounted(() => {
         @click="selectItem(item)"
       >
         <div class="font-medium leading-snug">{{ item.order }}. {{ item.title }}</div>
-        <div class="meta mt-0.5">{{ itemStatusLabel(item.status) }}</div>
+        <div class="mt-1">
+          <span
+            class="status-pill"
+            :class="item.status === 'done' ? 'status-pill--ok' : item.status === 'generating' ? 'status-pill--busy' : 'status-pill--idle'"
+          >
+            {{ itemStatusLabel(item.status) }}
+          </span>
+        </div>
       </button>
       <p v-if="!outline" class="px-2 py-3 empty">请先在大纲页生成并确认。</p>
     </aside>
 
     <section class="space-y-4 min-w-0">
-      <div class="flex flex-wrap gap-2 items-center">
-        <button class="btn" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
-          {{ streaming ? '生成中…' : error ? '重试生成' : '流式生成' }}
-        </button>
-        <button
-          class="btn-ghost"
-          :disabled="!chapterId || streaming || reviseBusy"
-          @click="reviseFailed ? retryCommitKnowledge() : saveRevise()"
-        >
-          {{ revising ? '入库中…' : reviseFailed ? '重试入库' : '保存修订并入库' }}
-        </button>
-        <button
-          class="btn-danger"
-          :disabled="!chapterId || activeVersionId == null || streaming || deleting || deletingChapter || reviseBusy"
-          @click="deleteCurrentVersion"
-        >
-          {{ deleting ? '删除中…' : '删除当前版本' }}
-        </button>
-        <button
-          class="btn-danger text-xs"
-          :disabled="!chapterId || streaming || deleting || deletingChapter || reviseBusy"
-          @click="deleteWholeChapter"
-          title="危险：清除整章及全部版本"
-        >
-          {{ deletingChapter ? '删除中…' : '删除整章及全部版本' }}
-        </button>
-        <span class="text-sm ml-auto tabular" style="color: var(--ink-muted)">
+      <div class="panel toolbar toolbar--split">
+        <div class="toolbar__actions">
+          <button class="btn" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
+            {{ streaming ? '生成中…' : error ? '重试生成' : '流式生成' }}
+          </button>
+          <button
+            class="btn-ghost"
+            :disabled="!chapterId || streaming || reviseBusy"
+            @click="reviseFailed ? retryCommitKnowledge() : saveRevise()"
+          >
+            {{ revising ? '入库中…' : reviseFailed ? '重试入库' : '保存修订并入库' }}
+          </button>
+          <button
+            class="btn-danger btn-sm"
+            :disabled="!chapterId || activeVersionId == null || streaming || deleting || deletingChapter || reviseBusy"
+            @click="deleteCurrentVersion"
+          >
+            {{ deleting ? '删除中…' : '删除当前版本' }}
+          </button>
+          <button
+            class="btn-danger btn-sm"
+            :disabled="!chapterId || streaming || deleting || deletingChapter || reviseBusy"
+            @click="deleteWholeChapter"
+            title="危险：清除整章及全部版本"
+          >
+            {{ deletingChapter ? '删除中…' : '删除整章及全部版本' }}
+          </button>
+        </div>
+        <span class="text-sm tabular meta">
           {{ status }}
           <span v-if="displayChars" class="ml-2">{{ displayChars }} 字</span>
         </span>
       </div>
 
-      <div v-if="revising || reviseFailed || reviseProgress > 0" class="panel p-4">
+      <div v-if="revising || reviseFailed || reviseProgress > 0" class="panel p-5">
         <div class="text-sm mb-2 font-medium">入库进度</div>
         <ProgressBar :value="reviseProgress" :failed="reviseFailed" />
         <div class="text-sm mt-2 tabular">
@@ -575,11 +587,11 @@ onUnmounted(() => {
           <span class="meta"> · {{ reviseFailed ? '失败' : revising ? '进行中' : '完成' }} </span>
         </div>
         <div class="meta mt-1">{{ reviseMessage }}</div>
-        <p v-if="reviseError" class="text-sm mt-2" style="color: var(--danger)">{{ reviseError }}</p>
+        <p v-if="reviseError" class="alert alert--danger mt-3">{{ reviseError }}</p>
         <p class="meta mt-2">摘要 → 实体抽取 → 向量化 → 记忆更新</p>
       </div>
 
-      <div class="panel p-4 grid gap-4 sm:grid-cols-2">
+      <div class="panel p-5 grid gap-4 sm:grid-cols-2">
         <div class="flex flex-wrap gap-4 items-end">
           <div>
             <label class="label">本章目标字数</label>
@@ -603,7 +615,7 @@ onUnmounted(() => {
           </p>
         </div>
         <div class="flex flex-wrap gap-4 items-end">
-          <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <label class="check">
             <input v-model="runCritic" type="checkbox" :disabled="streaming || reviseBusy" />
             启用一致性检验
           </label>
@@ -628,9 +640,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <p v-if="error" class="text-sm" style="color: var(--danger)">{{ error }}</p>
+      <p v-if="error" class="alert alert--danger">{{ error }}</p>
 
-      <div v-if="selected" class="panel p-4 text-sm">
+      <div v-if="selected" class="panel p-5 text-sm">
         <div class="font-medium">{{ selected.title }}</div>
         <div class="mt-1" style="color: var(--ink-muted)">{{ selected.summary }}</div>
         <ul v-if="(selected.key_points || []).length" class="mt-2 list-disc pl-5 meta space-y-0.5">
@@ -639,6 +651,10 @@ onUnmounted(() => {
       </div>
 
       <div class="editor-frame">
+        <div class="editor-chrome">
+          <span class="text-sm font-medium truncate">{{ selected?.title || '正文' }}</span>
+          <span class="meta tabular">{{ displayChars ? `${displayChars} 字` : '空白稿纸' }}</span>
+        </div>
         <div
           v-show="streaming"
           ref="streamEl"
@@ -655,10 +671,10 @@ onUnmounted(() => {
         />
       </div>
 
-      <div v-if="consistency" class="panel p-4">
+      <div v-if="consistency" class="panel p-5">
         <div class="font-medium mb-2 flex flex-wrap items-baseline gap-2">
           一致性报告
-          <span class="badge" :class="consistency.ok ? 'badge--ok' : ''">
+          <span class="badge" :class="consistency.ok ? 'badge--ok' : 'badge--danger'">
             {{ consistency.ok ? '通过' : '有问题' }}
           </span>
           <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮</span>
@@ -676,7 +692,7 @@ onUnmounted(() => {
           <li v-if="!(consistency.issues || []).length" class="empty">无问题</li>
         </ul>
       </div>
-      <div v-else-if="showNoReportHint" class="panel p-4">
+      <div v-else-if="showNoReportHint" class="panel p-5">
         <div class="font-medium mb-1">一致性报告</div>
         <p class="empty">该版本无一致性报告</p>
         <p class="meta mt-1">
@@ -684,7 +700,7 @@ onUnmounted(() => {
         </p>
       </div>
 
-      <div v-if="versions.length" class="panel p-4">
+      <div v-if="versions.length" class="panel p-5">
         <div class="text-sm mb-2 font-medium">版本链</div>
         <div class="flex flex-wrap gap-1.5">
           <button

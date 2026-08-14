@@ -40,18 +40,34 @@ onMounted(() => {
 })
 
 onUnmounted(() => es?.close())
+
+function statusText(s?: string) {
+  if (!s) return '连接中'
+  if (s === 'completed') return '完成'
+  if (s === 'failed') return '失败'
+  if (s === 'running') return '进行中'
+  if (s === 'pending') return '排队'
+  return s
+}
 </script>
 
 <template>
-  <div class="max-w-xl mx-auto panel p-6">
+  <div class="max-w-xl mx-auto panel p-8">
+    <div class="kicker mb-2">入库</div>
     <h1 class="page-title text-2xl mb-1">入库进度</h1>
-    <p class="page-desc mb-5">摘要 → 实体抽取 → 向量化，可断点续传</p>
+    <p class="page-desc mb-6">摘要 → 实体抽取 → 向量化，可断点续传</p>
 
+    <div class="progress-hero mb-4 tabular">{{ Math.round(task?.progress || 0) }}%</div>
     <ProgressBar :value="task?.progress || 0" :failed="!!error" />
-    <div class="text-sm mt-3 tabular">
-      {{ Math.round(task?.progress || 0) }}% · {{ task?.status || '连接中' }}
+    <div class="text-sm mt-4">
+      <span
+        class="status-pill"
+        :class="error ? 'status-pill--busy' : task?.status === 'completed' ? 'status-pill--ok' : 'status-pill--idle'"
+      >
+        {{ statusText(task?.status) }}
+      </span>
     </div>
-    <div class="meta mt-1">{{ task?.message }}</div>
-    <p v-if="error" class="text-sm mt-3" style="color: var(--danger)">{{ error }}</p>
+    <div class="meta mt-2">{{ task?.message }}</div>
+    <p v-if="error" class="alert alert--danger mt-4">{{ error }}</p>
   </div>
 </template>

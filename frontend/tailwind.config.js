@@ -6,6 +6,7 @@ export default {
     extend: {
       fontFamily: {
         sans: [
+          'Source Sans 3',
           'Segoe UI',
           'PingFang SC',
           'Hiragino Sans GB',
