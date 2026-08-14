@@ -219,47 +219,51 @@ onUnmounted(() => closeGenerateEs())
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="panel p-4 flex flex-wrap gap-3 items-end">
-      <div>
-        <label class="label">规划章数</label>
-        <input
-          v-model.number="chapterCount"
-          type="number"
-          min="1"
-          max="30"
-          class="input w-24"
-          :disabled="generating"
-        />
+  <div class="space-y-5">
+    <div class="panel toolbar toolbar--split">
+      <div class="toolbar__fields">
+        <div>
+          <label class="label">规划章数</label>
+          <input
+            v-model.number="chapterCount"
+            type="number"
+            min="1"
+            max="30"
+            class="input w-24"
+            :disabled="generating"
+          />
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="label">指导语（可选）</label>
+          <input
+            v-model="guidance"
+            class="input"
+            placeholder="例如：先打小怪再揭秘身世"
+            :disabled="generating"
+          />
+        </div>
       </div>
-      <div class="flex-1 min-w-[200px]">
-        <label class="label">指导语（可选）</label>
-        <input
-          v-model="guidance"
-          class="input"
-          placeholder="例如：先打小怪再揭秘身世"
-          :disabled="generating"
-        />
+      <div class="toolbar__actions">
+        <button class="btn" :disabled="busy || generating" @click="generate">
+          {{ generating ? '生成中…' : '生成大纲' }}
+        </button>
+        <button class="btn-ghost" :disabled="!current || busy || generating" @click="save">
+          保存编辑
+        </button>
+        <button class="btn-ghost" :disabled="!current || busy || generating" @click="confirm">
+          确认大纲
+        </button>
+        <button
+          class="btn-danger"
+          :disabled="!current || busy || generating"
+          @click="current && removeOutline(current)"
+        >
+          删除当前大纲
+        </button>
       </div>
-      <button class="btn" :disabled="busy || generating" @click="generate">
-        {{ generating ? '生成中…' : '生成大纲' }}
-      </button>
-      <button class="btn-ghost" :disabled="!current || busy || generating" @click="save">
-        保存编辑
-      </button>
-      <button class="btn-ghost" :disabled="!current || busy || generating" @click="confirm">
-        确认大纲
-      </button>
-      <button
-        class="btn-danger"
-        :disabled="!current || busy || generating"
-        @click="current && removeOutline(current)"
-      >
-        删除当前大纲
-      </button>
     </div>
 
-    <div v-if="generating || generateFailed || generateProgress > 0" class="panel p-4">
+    <div v-if="generating || generateFailed || generateProgress > 0" class="panel p-5">
       <div class="text-sm mb-2 font-medium">大纲生成进度</div>
       <ProgressBar :value="generateProgress" :failed="generateFailed" />
       <div class="text-sm mt-2 tabular">
@@ -267,7 +271,7 @@ onUnmounted(() => closeGenerateEs())
         <span class="meta"> · {{ generateFailed ? '失败' : generating ? '进行中' : '完成' }} </span>
       </div>
       <div class="meta mt-1">{{ generateMessage }}</div>
-      <p v-if="generateError" class="text-sm mt-2" style="color: var(--danger)">
+      <p v-if="generateError" class="alert alert--danger mt-3">
         {{ generateError }}
       </p>
       <p class="meta mt-2">准备上下文 → 调用模型生成 → 解析校正章号 → 落库</p>
@@ -279,8 +283,8 @@ onUnmounted(() => closeGenerateEs())
     <p class="meta">
       草稿与已确认大纲均可删除；已生成章节正文会保留并解绑。未点「保存编辑」的本地修改刷新后会丢失。
     </p>
-    <p v-if="error && !generateFailed" class="text-sm" style="color: var(--danger)">{{ error }}</p>
-    <p v-if="info" class="text-sm" style="color: var(--accent)">{{ info }}</p>
+    <p v-if="error && !generateFailed" class="alert alert--danger">{{ error }}</p>
+    <p v-if="info" class="alert alert--ok">{{ info }}</p>
 
     <div v-if="outlines.length" class="flex gap-2 text-sm flex-wrap items-center">
       <div v-for="o in outlines" :key="o.id" class="flex items-center gap-1">
@@ -289,10 +293,11 @@ onUnmounted(() => closeGenerateEs())
           :class="{ 'chip--active': current?.id === o.id }"
           @click="current = o"
         >
-          #{{ o.id }} {{ o.title }}（{{ o.status === 'confirmed' ? '已确认' : '草稿' }}）
+          #{{ o.id }} {{ o.title }}
+          <span class="ml-1 opacity-70">{{ o.status === 'confirmed' ? '已确认' : '草稿' }}</span>
         </button>
         <button
-          class="btn-danger text-xs px-2 py-1"
+          class="btn-danger btn-sm"
           :disabled="busy || generating"
           title="删除此大纲"
           @click="removeOutline(o)"
@@ -307,9 +312,9 @@ onUnmounted(() => closeGenerateEs())
         {{ current.title }} · {{ current.status === 'confirmed' ? '已确认' : '草稿' }} · 从第
         {{ current.start_from_chapter }} 章起
       </div>
-      <div v-for="item in current.items" :key="item.id || item.order" class="panel cv-card p-4 space-y-2">
+      <div v-for="item in current.items" :key="item.id || item.order" class="panel cv-card p-5 space-y-3">
         <div class="flex gap-3 items-center">
-          <span class="meta pt-0.5 shrink-0">第{{ current.start_from_chapter + item.order - 1 }}章</span>
+          <span class="chapter-index shrink-0">第{{ current.start_from_chapter + item.order - 1 }}章</span>
           <input v-model="item.title" class="input" @change="updateItem(item, 'title', item.title)" />
         </div>
         <textarea v-model="item.summary" class="textarea textarea-sm" rows="3" />
@@ -319,9 +324,18 @@ onUnmounted(() => closeGenerateEs())
           placeholder="要点，用；分隔"
           @change="item.key_points = ($event.target as HTMLInputElement).value.split(/[；;]/).map(s=>s.trim()).filter(Boolean)"
         />
-        <div class="meta">状态：{{ itemStatusLabel(item.status) }}</div>
+        <div>
+          <span
+            class="status-pill"
+            :class="item.status === 'done' ? 'status-pill--ok' : item.status === 'generating' ? 'status-pill--busy' : 'status-pill--idle'"
+          >
+            {{ itemStatusLabel(item.status) }}
+          </span>
+        </div>
       </div>
     </div>
-    <p v-else class="empty">尚未生成大纲。</p>
+    <div v-else class="empty-state">
+      <p class="empty">尚未生成大纲。</p>
+    </div>
   </div>
 </template>
