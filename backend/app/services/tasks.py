@@ -281,6 +281,23 @@ class TaskQueue:
         return list(result.scalars().all())
 
 
+async def fail_interrupted_tasks(session: AsyncSession) -> int:
+    """进程重启后把未完成任务标为失败，避免 SSE 轮询永久卡住。"""
+    rows = (
+        await session.execute(
+            select(AsyncTask).where(AsyncTask.status.in_(("pending", "running")))
+        )
+    ).scalars().all()
+    if not rows:
+        return 0
+    for task in rows:
+        task.status = "failed"
+        task.error = "interrupted by restart"
+        task.message = "进程重启，任务已中断"
+    await session.commit()
+    return len(rows)
+
+
 _queue: TaskQueue | None = None
 
 

@@ -83,7 +83,7 @@ async def find_chapter_by_outline_item(
     if ch is None:
         return None
 
-    if rebind and ch.outline_item_id != outline_item_id:
+    if rebind and ch.outline_item_id is None:
         ch.outline_item_id = outline_item_id
         await session.commit()
         await session.refresh(ch)
@@ -198,7 +198,12 @@ async def stream_generate_chapter(
     if item is None:
         yield {"event": "error", "message": "大纲条目不存在"}
         return
+    outline = await session.get(Outline, item.outline_id)
+    if outline is None or outline.novel_id != novel_id:
+        yield {"event": "error", "message": "大纲条目不属于该小说"}
+        return
 
+    finished = False
     try:
         item.status = "generating"
         novel.status = "generating"
@@ -208,9 +213,12 @@ async def stream_generate_chapter(
         resolved_target = await resolve_target_chars(session, novel, target_chars)
         segments = plan_chapter_segments(resolved_target, item.key_points or [])
         segmented = len(segments) > 1
+        next_index = await _resolve_generation_index(session, novel, item)
 
         yield {"event": "status", "message": "组装上下文…"}
-        ctx = await build_context(session, novel, item)
+        ctx = await build_context(
+            session, novel, item, upto_chapter_index=max(0, next_index - 1)
+        )
 
         if segmented:
             yield {
@@ -316,7 +324,6 @@ async def stream_generate_chapter(
         )
 
         # 按大纲目标章号 upsert，避免 (novel_id, index) UNIQUE 冲突
-        next_index = await _resolve_generation_index(session, novel, item)
         chapter, ver, overwritten = await _upsert_generated_chapter(
             session,
             novel_id=novel_id,
@@ -383,10 +390,13 @@ async def stream_generate_chapter(
             "target_chars": resolved_target,
             "segment_count": len(segments),
         }
+        finished = True
     except Exception as exc:  # noqa: BLE001
         logger.exception("stream_generate_chapter failed novel=%s item=%s", novel_id, outline_item_id)
-        await _reset_generating_status(session, novel, item)
         yield {"event": "error", "message": f"生成失败: {exc}"}
+    finally:
+        if not finished:
+            await _reset_generating_status(session, novel, item)
 
 
 async def update_recurrent_memory(session: AsyncSession, novel_id: int, chapter: Chapter) -> None:

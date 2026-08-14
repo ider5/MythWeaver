@@ -20,6 +20,7 @@ class OutlineGenerateTaskOut(BaseModel):
 
 
 class OutlineItemIn(BaseModel):
+    id: Optional[int] = None
     order: int
     title: str = ""
     summary: str = ""

@@ -314,11 +314,14 @@ async def run_critic_loop(
     report = await check_consistency(session, novel, content, recent_tail=recent_tail)
     report.critic_rounds = 0
     initial = report.model_copy(deep=True)
-    rounds = 0
-    while needs_critic_rewrite(report) and rounds < max_rounds:
+    for _ in range(max(0, max_rounds)):
+        if not needs_critic_rewrite(report):
+            break
+        previous = content
         content, report = await critic_revise(session, novel, content, report)
-        rounds = report.critic_rounds
-        # 若仅剩 info，视为可接受
+        # 跳过整章重写时 critic_rounds 不会增加；立刻退出避免空转
+        if content == previous:
+            break
         if all(i.severity == "info" for i in report.issues):
             report.ok = True
             break

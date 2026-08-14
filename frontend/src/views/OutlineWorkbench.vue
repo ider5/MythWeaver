@@ -156,6 +156,7 @@ async function save() {
     const { data } = await outlineApi.update(novelId, current.value.id, {
       title: current.value.title,
       items: current.value.items.map((i) => ({
+        id: i.id,
         order: i.order,
         title: i.title,
         summary: i.summary,

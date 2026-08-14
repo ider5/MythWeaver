@@ -290,20 +290,33 @@ async def update_outline(
     if title is not None:
         outline.title = title
     if items is not None:
-        for old in list(outline.items):
-            await session.delete(old)
-        await session.flush()
-        for item in items:
-            session.add(
-                OutlineItem(
-                    outline_id=outline.id,
-                    order=int(item["order"]),
-                    title=item.get("title") or "",
-                    summary=item.get("summary") or "",
-                    key_points=item.get("key_points") or [],
-                    status=item.get("status") or "pending",
+        existing = {it.id: it for it in list(outline.items)}
+        keep: set[int] = set()
+        for raw in items:
+            item_id = raw.get("id")
+            if item_id and item_id in existing:
+                row = existing[item_id]
+                row.order = int(raw["order"])
+                row.title = raw.get("title") or ""
+                row.summary = raw.get("summary") or ""
+                row.key_points = raw.get("key_points") or []
+                if raw.get("status"):
+                    row.status = raw["status"]
+                keep.add(item_id)
+            else:
+                session.add(
+                    OutlineItem(
+                        outline_id=outline.id,
+                        order=int(raw["order"]),
+                        title=raw.get("title") or "",
+                        summary=raw.get("summary") or "",
+                        key_points=raw.get("key_points") or [],
+                        status=raw.get("status") or "pending",
+                    )
                 )
-            )
+        for oid, row in existing.items():
+            if oid not in keep:
+                await session.delete(row)
     await session.commit()
     return await get_outline(session, outline_id)
 

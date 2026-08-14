@@ -42,6 +42,13 @@ let reviseEs: EventSource | null = null
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** 避免快速切换条目时旧请求覆盖新选择 */
 let loadSeq = 0
+/** 使进行中的章节加载 / 过期 SSE 回调失效，避免修订写到错误章节 */
+let streamEpoch = 0
+
+function invalidateLoadsAndStreams() {
+  loadSeq += 1
+  streamEpoch += 1
+}
 
 const streamEl = ref<HTMLElement | null>(null)
 const stream = useRafText(streamEl, streamEl)
@@ -110,17 +117,12 @@ function armIdleWatch() {
   clearIdleWatch()
   idleTimer = setTimeout(() => {
     if (!streaming.value) return
-    error.value = '生成超时：长时间无响应，连接可能已断开，请重试'
-    status.value = '已中断'
-    streaming.value = false
-    stream.sync()
-    content.value = stream.read()
-    es?.close()
-    es = null
+    stopStream('生成超时：长时间无响应，连接可能已断开，请重试')
   }, IDLE_TIMEOUT_MS)
 }
 
 function stopStream(msg?: string) {
+  invalidateLoadsAndStreams()
   clearIdleWatch()
   stream.sync()
   content.value = stream.read()
@@ -249,6 +251,8 @@ async function load() {
 
 async function startGenerate() {
   if (!selected.value) return
+  invalidateLoadsAndStreams()
+  const epoch = streamEpoch
   streaming.value = true
   status.value = '连接中…'
   content.value = ''
@@ -273,6 +277,7 @@ async function startGenerate() {
   es = new EventSource(url)
   armIdleWatch()
   es.onmessage = async (ev) => {
+    if (epoch !== streamEpoch) return
     armIdleWatch()
     let data: any
     try {
@@ -305,8 +310,10 @@ async function startGenerate() {
       es?.close()
       es = null
       await load()
+      if (epoch !== streamEpoch) return
       if (chapterId.value) {
         const { data: vers } = await novelsApi.versions(novelId, chapterId.value)
+        if (epoch !== streamEpoch) return
         applyLatestVersion(vers)
         if (data.content) content.value = data.content
       }
@@ -502,6 +509,7 @@ async function deleteWholeChapter() {
 
 onMounted(load)
 onUnmounted(() => {
+  invalidateLoadsAndStreams()
   clearIdleWatch()
   es?.close()
   closeReviseEs()

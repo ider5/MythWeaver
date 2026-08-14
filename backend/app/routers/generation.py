@@ -60,8 +60,8 @@ async def generate_chapter_sse(
     novel_id: int,
     outline_item_id: int = Query(...),
     run_critic: bool = Query(True),
-    max_critic_rounds: int = Query(2),
-    target_chars: int | None = Query(default=None),
+    max_critic_rounds: int = Query(2, ge=0, le=2),
+    target_chars: int | None = Query(default=None, ge=500, le=30000),
 ):
     """EventSource 友好的 GET SSE。"""
 
