@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # 续写 SSE 心跳间隔；前端空闲超时建议 > 2× 此值
     sse_heartbeat_interval: float = 12.0
 
+    # 浏览器跨域；勿与 allow_credentials 一起使用 *（会反射任意 Origin）
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # 续写篇幅：单次 max_tokens 上限、长章分段
     generation_max_tokens: int = 8000
     chapter_segment_threshold: int = 4500
@@ -102,6 +105,9 @@ class Settings(BaseSettings):
             return self.database_url
         db_path = (self.data_dir / "mythweaver.db").resolve()
         return f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+    def allowed_cors_origins(self) -> list[str]:
+        return [part.strip() for part in self.cors_origins.split(",") if part.strip()]
 
 
 @lru_cache

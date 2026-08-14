@@ -75,16 +75,33 @@ async def task_events(task_id: int, session: AsyncSession = Depends(get_session)
 
 @router.get("/costs", response_model=CostSummaryOut)
 async def cost_summary(novel_id: int | None = None, session: AsyncSession = Depends(get_session)):
-    stmt = select(CostLog)
-    if novel_id is not None:
-        stmt = stmt.where(CostLog.novel_id == novel_id)
-    rows = (await session.execute(stmt.order_by(CostLog.id.desc()).limit(200))).scalars().all()
-    total_cost = sum(r.cost_usd for r in rows)
-    total_in = sum(r.input_tokens for r in rows)
-    total_out = sum(r.output_tokens for r in rows)
-    by_purpose: dict[str, float] = {}
-    for r in rows:
-        by_purpose[r.purpose] = by_purpose.get(r.purpose, 0.0) + r.cost_usd
+    def _scoped(stmt):
+        if novel_id is not None:
+            return stmt.where(CostLog.novel_id == novel_id)
+        return stmt
+
+    total_cost = await session.scalar(
+        _scoped(select(func.coalesce(func.sum(CostLog.cost_usd), 0.0)))
+    )
+    total_in = await session.scalar(
+        _scoped(select(func.coalesce(func.sum(CostLog.input_tokens), 0)))
+    )
+    total_out = await session.scalar(
+        _scoped(select(func.coalesce(func.sum(CostLog.output_tokens), 0)))
+    )
+    purpose_rows = (
+        await session.execute(
+            _scoped(
+                select(CostLog.purpose, func.coalesce(func.sum(CostLog.cost_usd), 0.0)).group_by(
+                    CostLog.purpose
+                )
+            )
+        )
+    ).all()
+    by_purpose = {str(purpose): float(cost or 0.0) for purpose, cost in purpose_rows}
+
+    recent_stmt = _scoped(select(CostLog)).order_by(CostLog.id.desc()).limit(30)
+    rows = (await session.execute(recent_stmt)).scalars().all()
     recent = [
         {
             "id": r.id,
@@ -95,12 +112,12 @@ async def cost_summary(novel_id: int | None = None, session: AsyncSession = Depe
             "cost_usd": r.cost_usd,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
-        for r in rows[:30]
+        for r in rows
     ]
     return CostSummaryOut(
-        total_cost_usd=round(total_cost, 6),
-        total_input_tokens=total_in,
-        total_output_tokens=total_out,
+        total_cost_usd=round(float(total_cost or 0.0), 6),
+        total_input_tokens=int(total_in or 0),
+        total_output_tokens=int(total_out or 0),
         by_purpose=by_purpose,
         recent=recent,
     )

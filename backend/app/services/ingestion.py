@@ -226,6 +226,13 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
     await progress.update(session, progress=3.0, message=f"开始入库，共 {total} 章")
     await asyncio.gather(*(process_one_isolated(ch.id) for ch in chapters))
 
+    # 摘要/抽取在独立 session 提交；本会话 expire_on_commit=False，
+    # identity map 里的 Chapter 仍可能停在 raw，必须过期后再向量化。
+    session.expire_all()
+    novel = await session.get(Novel, novel_id)
+    if novel is None:
+        raise ValueError("小说不存在")
+
     # 批量向量化（智谱等支持一次多 input；跳过已有 embedding_json 的章）
     await progress.update(session, progress=78.0, message="批量向量化…")
     await _batch_embed_novel(session, novel, progress)
@@ -254,7 +261,10 @@ async def _batch_embed_novel(
 
     chapters = (
         await session.execute(
-            select(Chapter).where(Chapter.novel_id == novel.id).order_by(Chapter.index)
+            select(Chapter)
+            .where(Chapter.novel_id == novel.id)
+            .order_by(Chapter.index)
+            .execution_options(populate_existing=True)
         )
     ).scalars().all()
 
