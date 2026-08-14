@@ -79,13 +79,13 @@ async function confirm() {
           class="tab-btn cursor-pointer"
           :class="mode === 'file' && 'tab-btn--active'"
         >
-          <input v-model="mode" type="radio" value="file" class="sr-only" /> 单文件
+          <input v-model="mode" type="radio" name="import-mode" value="file" class="sr-only" /> 单文件
         </label>
         <label
           class="tab-btn cursor-pointer"
           :class="mode === 'dir' && 'tab-btn--active'"
         >
-          <input v-model="mode" type="radio" value="dir" class="sr-only" /> 多文件/目录
+          <input v-model="mode" type="radio" name="import-mode" value="dir" class="sr-only" /> 多文件/目录
         </label>
       </div>
       <div>

@@ -308,6 +308,10 @@ select.input:focus {
   color: var(--accent);
   background: var(--accent-soft);
 }
+.tab-btn:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .ws-tabs {
   display: flex;
@@ -414,6 +418,10 @@ select.input:focus {
 .status-pill--idle {
   color: var(--ink-muted);
   background: var(--bg-deep);
+}
+.status-pill--danger {
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .meta {
@@ -546,7 +554,6 @@ select.input:focus {
 }
 
 .editor-frame {
-  overflow: hidden;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -613,6 +620,8 @@ select.input:focus {
 }
 
 .dropzone {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -621,11 +630,15 @@ select.input:focus {
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
   background: var(--paper);
-  transition: border-color 140ms ease, background-color 140ms ease;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 .dropzone:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 45%, var(--paper));
+}
+.dropzone:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
 input[type="checkbox"],
@@ -694,16 +707,14 @@ select.input {
   padding-right: 2.1rem;
 }
 
-.dropzone {
-  position: relative;
-}
-
 .dropzone__input {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
   cursor: pointer;
-  font-size: 0;
+  font-size: 100px;
 }
 
 .dropzone__icon {
@@ -839,6 +850,7 @@ select.input {
   gap: 0.75rem;
   padding: 0.65rem 1rem;
   border-bottom: 1px solid var(--line);
+  border-radius: var(--radius) var(--radius) 0 0;
   background: color-mix(in srgb, var(--panel) 70%, transparent);
 }
 

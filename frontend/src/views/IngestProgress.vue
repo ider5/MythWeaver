@@ -49,6 +49,13 @@ function statusText(s?: string) {
   if (s === 'pending') return '排队'
   return s
 }
+
+function statusTone(s?: string, failed?: boolean) {
+  if (failed || s === 'failed') return 'status-pill--danger'
+  if (s === 'completed') return 'status-pill--ok'
+  if (s === 'running' || s === 'pending') return 'status-pill--busy'
+  return 'status-pill--idle'
+}
 </script>
 
 <template>
@@ -62,7 +69,7 @@ function statusText(s?: string) {
     <div class="text-sm mt-4">
       <span
         class="status-pill"
-        :class="error ? 'status-pill--busy' : task?.status === 'completed' ? 'status-pill--ok' : 'status-pill--idle'"
+        :class="statusTone(task?.status, !!error)"
       >
         {{ statusText(task?.status) }}
       </span>

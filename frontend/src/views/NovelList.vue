@@ -63,7 +63,8 @@ onMounted(load)
       <button class="btn" @click="router.push('/import')">导入小说</button>
     </div>
 
-    <div v-if="loading" class="space-y-3" aria-busy="true">
+    <div v-if="loading" class="space-y-3" aria-busy="true" aria-live="polite">
+      <span class="sr-only">加载中…</span>
       <div v-for="i in 3" :key="i" class="skeleton h-[4.75rem]" />
     </div>
     <p v-else-if="error" class="alert alert--danger">{{ error }}</p>

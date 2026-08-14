@@ -214,7 +214,7 @@ onMounted(load)
             <div class="font-medium flex items-center gap-2 flex-wrap">
               <span>{{ t.title }}</span>
               <span class="badge">{{ t.thread_type }}</span>
-              <span class="status-pill" :class="t.status === '已回收' ? 'status-pill--ok' : 'status-pill--busy'">
+              <span class="status-pill" :class="t.status === '已回收' ? 'status-pill--ok' : 'status-pill--idle'">
                 {{ t.status }}
               </span>
             </div>

@@ -12,6 +12,11 @@ function fmtUsd(n?: number, digits = 4) {
   return Number(n).toFixed(digits)
 }
 
+function fmtMoney(n?: number, digits = 4) {
+  const v = fmtUsd(n, digits)
+  return v === '—' ? '—' : `$${v}`
+}
+
 function fmtInt(n?: number) {
   if (n == null || Number.isNaN(Number(n))) return '—'
   return Number(n).toLocaleString('zh-CN')
@@ -45,7 +50,7 @@ onMounted(async () => {
       <ul class="text-sm">
         <li v-for="(v, k) in data?.by_purpose || {}" :key="k" class="purpose-row">
           <span>{{ k }}</span>
-          <span class="tabular meta">${{ fmtUsd(Number(v)) }}</span>
+          <span class="tabular meta">{{ fmtMoney(Number(v)) }}</span>
         </li>
         <li v-if="data && !Object.keys(data.by_purpose || {}).length" class="empty">暂无记录</li>
       </ul>
@@ -67,7 +72,7 @@ onMounted(async () => {
             <td>{{ r.purpose }}</td>
             <td>{{ r.model }}</td>
             <td class="tabular">{{ fmtInt(r.input_tokens) }}/{{ fmtInt(r.output_tokens) }}</td>
-            <td class="tabular">${{ fmtUsd(Number(r.cost_usd), 5) }}</td>
+            <td class="tabular">{{ fmtMoney(Number(r.cost_usd), 5) }}</td>
           </tr>
           <tr v-if="data && !(data.recent || []).length">
             <td colspan="4" class="empty">暂无调用记录</td>
