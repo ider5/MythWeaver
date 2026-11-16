@@ -49,10 +49,10 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 | GET | `/api/novels/{id}` | 详情，含 `role` |
 | PATCH | `/api/novels/{id}` | 更新，可改 `role` |
 | DELETE | `/api/novels/{id}` | 删除 |
-| POST | `/api/novels/import/preview` | multipart：`file` 或 `files` + `title` |
+| POST | `/api/novels/import/preview` | multipart：`file`（txt / md / epub）或 `files`（txt / md）+ `title`。EPUB 按目录拆章，预览带书内标题、作者和卷名 |
 | POST | `/api/novels/import/confirm` | `{ import_token, title?, author?, genre?, role? }`。`role`：`manuscript`（原稿，默认可续写导出）或 `reference`（参考，只拆文风与设定） |
 | POST | `/api/novels/{id}/ingest` | 启动入库 → `{ task_id }`。参考本同样可入库 |
-| GET | `/api/novels/{id}/export` | 导出 txt/md。参考本返回 409，不导出成书 |
+| GET | `/api/novels/{id}/export` | 导出 txt / md / epub。可选 `volume` 或 `chapter_id`，二者只能有一个；缺省导出全书。参考本返回 409 |
 | GET | `/api/novels/{id}/backup` | 下载单本 ZIP 数据备份。原稿与参考本都可以。不含任务、费用和 WebDAV |
 | POST | `/api/novels/backup/restore` | multipart：`file` 为 ZIP，可选表单 `title`。恢复成一本新小说，不覆盖原书 |
 | GET | `/api/novels/{id}/chapters` | 章节列表（不含正文） |

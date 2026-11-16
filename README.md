@@ -46,11 +46,11 @@
 - **原稿**：接着写这本书。入库后可大纲、续写，并导出成书。
 - **参考**：只拆文风与结构。不会成为可续写正文，也不会导出成书。
 
-支持单个 txt/md，或一个文件夹里的 txt/md。预览分章后可改标题、作者、题材，再确认。确认后自动开始入库。`/import?role=manuscript` 或 `reference` 会预选用途。
+支持单个 txt/md/epub，或一个文件夹里的 txt/md。EPUB 按目录和章节标题拆章，有分卷时带上卷名。预览分章后可改标题、作者、题材，再确认。确认后自动开始入库。`/import?role=manuscript` 或 `reference` 会预选用途。
 
 ### 工作台
 
-分区：**设定**、**大纲**、**续写**（参考本没有这一页）、**用量**、**任务**。参考本打开续写时只说明不会进入续写，并链到设定。
+分区：**设定**、**大纲**、**续写**（参考本没有这一页）、**用量**、**任务**。参考本打开续写时只说明不会进入续写，并链到设定。标题旁可导出 TXT、MD、EPUB；超过一章时先选全书、某一卷或某一章。
 
 **大纲**三步：规划 → 校对确认 → 连写。
 
@@ -71,7 +71,7 @@
 
 | `role` | 用途 |
 |---|---|
-| `manuscript` | 原稿。可入库、大纲、续写，并可导出 txt/md。列表默认只显示这一类。 |
+| `manuscript` | 原稿。可入库、大纲、续写，并可导出 txt/md/epub。列表默认只显示这一类。 |
 | `reference` | 仿写参考。仍会入库，抽出 Story Bible 与文风样本。不进入默认续写列表，不能作为章节生成来源，不能导出为书。参考章节不会写进原稿正文。 |
 
 - `POST /api/novels`、`PATCH /api/novels/{id}`、`POST /api/novels/import/confirm` 接受 `manuscript` 或 `reference`
@@ -330,11 +330,11 @@ Import asks for the role before the file:
 - **Manuscript**: continue this book. After ingest you can outline, write, and export.
 - **Reference**: extract style and structure only. It does not become continuable prose and cannot be exported as a book.
 
-Upload one `.txt` or `.md` file, or a folder of them. Preview the chapter split, edit title, author, and genre, then confirm. Confirm starts ingest. `/import?role=manuscript` or `reference` preselects the role.
+Upload one `.txt`, `.md`, or `.epub` file, or a folder of `.txt` / `.md`. An EPUB is split by its table of contents and chapter headings, and keeps volume names. Preview the chapter split, edit title, author, and genre, then confirm. Confirm starts ingest. `/import?role=manuscript` or `reference` preselects the role.
 
 ### Workbench
 
-Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**, **Tasks**. Opening Write on a reference only explains that it will not be continued, and links to the Bible.
+Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**, **Tasks**. Opening Write on a reference only explains that it will not be continued, and links to the Bible. Beside the title, export TXT, MD, or EPUB. With more than one chapter, choose the whole book, one volume, or one chapter first.
 
 **Outline** has three steps: plan, review and confirm, batch write.
 
@@ -355,7 +355,7 @@ Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**,
 
 | `role` | Use |
 |---|---|
-| `manuscript` | Source you can continue. Ingest, outline, write, and export as txt/md. The list defaults to this role. |
+| `manuscript` | Source you can continue. Ingest, outline, write, and export as txt/md/epub. The list defaults to this role. |
 | `reference` | A model to imitate. It is still ingested, and yields a Story Bible and style samples. It stays out of the default continuation list, cannot be a generation source, and cannot be exported as a book. Its chapters are not copied into a manuscript. |
 
 - `POST /api/novels`, `PATCH /api/novels/{id}`, and `POST /api/novels/import/confirm` accept `manuscript` or `reference`

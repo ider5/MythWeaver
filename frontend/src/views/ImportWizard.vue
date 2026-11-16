@@ -38,6 +38,7 @@ async function onFileChange(e: Event) {
     const { data } = await novelsApi.previewImport(form)
     preview.value = data
     if (!title.value) title.value = data.title
+    if (!author.value && data.author) author.value = data.author
     step.value = 'preview'
   } catch (err: any) {
     error.value = err?.response?.data?.detail || err?.message || '预览失败'
@@ -104,7 +105,7 @@ async function confirm() {
         <label class="dropzone cursor-pointer w-full">
           <span class="dropzone__icon" aria-hidden="true">文</span>
           <span class="font-medium">
-            {{ mode === 'dir' ? '选择文件夹里的 txt / md' : '选择一个 txt / md 文件' }}
+            {{ mode === 'dir' ? '选择文件夹里的 txt / md' : '选择一个 txt、md 或 epub' }}
           </span>
           <span class="meta">点此选择。书名先用文件名，下一步再改。</span>
           <input
@@ -112,7 +113,7 @@ async function confirm() {
             class="dropzone__input"
             :multiple="mode === 'dir'"
             :webkitdirectory="mode === 'dir' ? true : undefined"
-            accept=".txt,.md,.text"
+            :accept="mode === 'dir' ? '.txt,.md,.text' : '.txt,.md,.text,.epub'"
             @change="onFileChange"
           />
         </label>

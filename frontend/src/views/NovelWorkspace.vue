@@ -61,8 +61,83 @@ const kindLabel = computed(() => {
   return '续写'
 })
 
+interface ExportChapter {
+  id: number
+  index: number
+  title: string
+  volume?: string | null
+}
+
+const exportChapters = ref<ExportChapter[]>([])
+const exportScope = ref('book')
+
+const exportVolumes = computed(() => {
+  const seen: string[] = []
+  for (const chapter of exportChapters.value) {
+    const volume = (chapter.volume || '').trim()
+    if (volume && !seen.includes(volume)) seen.push(volume)
+  }
+  return seen
+})
+
+const showExportScope = computed(
+  () => !isReference.value && (exportChapters.value.length > 1 || exportVolumes.value.length > 1),
+)
+
+function chapterOption(chapter: ExportChapter) {
+  const title = (chapter.title || `第${chapter.index}章`).replace(/\s+/g, ' ').trim()
+  const short = title.length > 22 ? `${title.slice(0, 22)}…` : title
+  return `${chapter.index}. ${short}`
+}
+
+function exportScopeLabel() {
+  const raw = exportScope.value
+  if (raw.startsWith('volume:')) return raw.slice('volume:'.length) || '本卷'
+  if (raw.startsWith('chapter:')) {
+    const chapterId = Number(raw.slice('chapter:'.length))
+    const chapter = exportChapters.value.find((item) => item.id === chapterId)
+    return chapter ? chapterOption(chapter) : '本章'
+  }
+  return '全书'
+}
+
+function exportTarget(): { volume?: string; chapterId?: number } | undefined {
+  const raw = exportScope.value
+  if (raw.startsWith('volume:')) {
+    const volume = raw.slice('volume:'.length)
+    return volume ? { volume } : undefined
+  }
+  if (raw.startsWith('chapter:')) {
+    const chapterId = Number(raw.slice('chapter:'.length))
+    return Number.isFinite(chapterId) && chapterId > 0 ? { chapterId } : undefined
+  }
+  return undefined
+}
+
 function exportNovel(format: 'txt' | 'md' | 'epub' = 'txt') {
-  window.open(novelsApi.exportUrl(id.value, format), '_blank')
+  window.open(novelsApi.exportUrl(id.value, format, exportTarget()), '_blank')
+}
+
+async function refreshExportChapters() {
+  if (!id.value || novel.value?.role === 'reference') {
+    exportChapters.value = []
+    exportScope.value = 'book'
+    return
+  }
+  try {
+    const { data } = await novelsApi.chapters(id.value)
+    exportChapters.value = data
+    const raw = exportScope.value
+    const stillThere =
+      raw === 'book' ||
+      (raw.startsWith('volume:') &&
+        data.some((chapter) => (chapter.volume || '').trim() === raw.slice('volume:'.length))) ||
+      (raw.startsWith('chapter:') && data.some((chapter) => chapter.id === Number(raw.slice('chapter:'.length))))
+    if (!stillThere) exportScope.value = 'book'
+  } catch {
+    exportChapters.value = []
+    exportScope.value = 'book'
+  }
 }
 
 function downloadBackup() {
@@ -111,12 +186,14 @@ async function refreshNovelMeta() {
 
 onMounted(async () => {
   await refreshNovelMeta()
+  await refreshExportChapters()
   await refreshActiveTasks()
   startTaskPoll()
 })
 
 onActivated(async () => {
   await refreshNovelMeta()
+  await refreshExportChapters()
   await refreshActiveTasks()
   startTaskPoll()
 })
@@ -170,33 +247,36 @@ onUnmounted(() => {
         >
           备份
         </button>
-        <button
-          v-if="!isReference"
-          class="btn-ghost"
-          type="button"
-          title="导出 TXT"
-          @click="exportNovel('txt')"
-        >
-          TXT
-        </button>
-        <button
-          v-if="!isReference"
-          class="btn-ghost"
-          type="button"
-          title="导出 Markdown"
-          @click="exportNovel('md')"
-        >
-          MD
-        </button>
-        <button
-          v-if="!isReference"
-          class="btn-ghost"
-          type="button"
-          title="导出 EPUB"
-          @click="exportNovel('epub')"
-        >
-          EPUB
-        </button>
+        <template v-if="!isReference">
+          <label v-if="showExportScope" class="sr-only" for="export-scope">导出范围</label>
+          <select
+            v-if="showExportScope"
+            id="export-scope"
+            v-model="exportScope"
+            class="input export-scope"
+          >
+            <option value="book">全书</option>
+            <optgroup v-if="exportVolumes.length" label="卷">
+              <option v-for="volume in exportVolumes" :key="volume" :value="`volume:${volume}`">
+                {{ volume }}
+              </option>
+            </optgroup>
+            <optgroup v-if="exportChapters.length > 1" label="章">
+              <option v-for="chapter in exportChapters" :key="chapter.id" :value="`chapter:${chapter.id}`">
+                {{ chapterOption(chapter) }}
+              </option>
+            </optgroup>
+          </select>
+          <button class="btn-ghost" type="button" :title="`导出${exportScopeLabel()} TXT`" @click="exportNovel('txt')">
+            TXT
+          </button>
+          <button class="btn-ghost" type="button" :title="`导出${exportScopeLabel()} Markdown`" @click="exportNovel('md')">
+            MD
+          </button>
+          <button class="btn-ghost" type="button" :title="`导出${exportScopeLabel()} EPUB`" @click="exportNovel('epub')">
+            EPUB
+          </button>
+        </template>
       </div>
     </header>
     <nav class="ws-tabs mb-6" aria-label="作品分区">

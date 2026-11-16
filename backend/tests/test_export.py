@@ -186,3 +186,157 @@ async def test_export_epub_zip_structure(client):
         assert "OEBPS/toc.ncx" in names
         assert zf.read("mimetype") == b"application/epub+zip"
         assert any(n.startswith("OEBPS/chap_") for n in names)
+
+
+async def _seed_volumes(session):
+    novel = Novel(title="分卷之书", genre="玄幻", status="ready", chapter_count=3, author="叶凡")
+    session.add(novel)
+    await session.flush()
+    rows = []
+    for index, title, volume, content in (
+        (1, "第一章 开篇", "第一卷", "卷一开篇。"),
+        (2, "第二章 中段", "第一卷", "卷一中段。"),
+        (3, "第三章 下卷", "第二卷", "卷二正文。"),
+    ):
+        row = Chapter(
+            novel_id=novel.id,
+            index=index,
+            title=title,
+            volume=volume,
+            content=content,
+            char_count=len(content),
+            status="raw",
+        )
+        session.add(row)
+        rows.append(row)
+    await session.commit()
+    for row in rows:
+        await session.refresh(row)
+    return novel.id, [row.id for row in rows]
+
+
+@pytest.mark.asyncio
+async def test_export_volume_keeps_order_and_drops_other_volumes(client):
+    from urllib.parse import unquote
+
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, _ids = await _seed_volumes(session)
+
+    r = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"format": "txt", "volume": " 第一卷 "},
+    )
+    assert r.status_code == 200
+    text = r.content.decode("utf-8")
+    assert "卷一开篇。" in text
+    assert "卷一中段。" in text
+    assert "卷二正文。" not in text
+    assert text.index("第一章 开篇") < text.index("第二章 中段")
+    assert "第一卷" in unquote(r.headers["content-disposition"])
+
+    md = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"format": "md", "volume": "第一卷"},
+    )
+    body = md.content.decode("utf-8")
+    assert "# 第一章 开篇" in body
+    assert "# 第二章 中段" in body
+    assert "第三章" not in body
+
+
+@pytest.mark.asyncio
+async def test_export_one_chapter_epub(client):
+    import io
+    import zipfile
+    from urllib.parse import unquote
+
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, ids = await _seed_volumes(session)
+
+    r = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"format": "epub", "chapter_id": ids[2]},
+    )
+    assert r.status_code == 200
+    assert "第三章" in unquote(r.headers["content-disposition"])
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        blob = "\n".join(
+            zf.read(name).decode("utf-8")
+            for name in zf.namelist()
+            if name.endswith(".xhtml") or name.endswith(".opf")
+        )
+    assert "卷二正文。" in blob
+    assert "卷一开篇。" not in blob
+    assert "卷一中段。" not in blob
+    assert "分卷之书 · 第三章 下卷" in blob
+
+
+@pytest.mark.asyncio
+async def test_export_scope_rejects_conflicts_and_misses(client):
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, ids = await _seed_volumes(session)
+        other = Novel(title="另一本", genre="都市", status="ready", chapter_count=1)
+        session.add(other)
+        await session.flush()
+        foreign = Chapter(
+            novel_id=other.id,
+            index=1,
+            title="外来章",
+            content="不属于这本书。",
+            char_count=8,
+            status="raw",
+        )
+        session.add(foreign)
+        await session.commit()
+        await session.refresh(foreign)
+        foreign_id = foreign.id
+
+    both = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"volume": "第一卷", "chapter_id": ids[0]},
+    )
+    assert both.status_code == 400
+
+    empty = await client.get(f"/api/novels/{novel_id}/export", params={"volume": "  "})
+    assert empty.status_code == 400
+
+    missing = await client.get(f"/api/novels/{novel_id}/export", params={"volume": "第三卷"})
+    assert missing.status_code == 404
+
+    other_chapter = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"chapter_id": foreign_id},
+    )
+    assert other_chapter.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_reference_stays_blocked_when_scoped(client):
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel = Novel(title="参考样本", genre="言情", status="ready", role="reference", chapter_count=1)
+        session.add(novel)
+        await session.flush()
+        chapter = Chapter(
+            novel_id=novel.id,
+            index=1,
+            title="样本",
+            volume="第一卷",
+            content="只拆文风。",
+            char_count=4,
+            status="raw",
+        )
+        session.add(chapter)
+        await session.commit()
+        novel_id, chapter_id = novel.id, chapter.id
+
+    by_chapter = await client.get(
+        f"/api/novels/{novel_id}/export",
+        params={"chapter_id": chapter_id},
+    )
+    by_volume = await client.get(f"/api/novels/{novel_id}/export", params={"volume": "第一卷"})
+    assert by_chapter.status_code == 409
+    assert by_volume.status_code == 409

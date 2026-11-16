@@ -33,6 +33,7 @@ from app.services import ingestion
 from app.services import scratch as scratch_svc
 from app.services.chapter_length import refresh_original_chapter_stats, resolve_target_chars
 from app.services.epub_export import build_epub
+from app.services.epub_import import EpubImportError
 from app.services import novel_backup
 from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
@@ -194,13 +195,49 @@ async def delete_novel(novel_id: int, session: AsyncSession = Depends(get_sessio
     return {"message": "已删除"}
 
 
+def _scoped_chapters(
+    chapters: list[Chapter],
+    *,
+    volume: str | None,
+    chapter_id: int | None,
+) -> list[Chapter]:
+    if volume is not None and chapter_id is not None:
+        raise HTTPException(400, "请只选择一卷或一章")
+    if chapter_id is not None:
+        picked = [ch for ch in chapters if ch.id == chapter_id]
+        if not picked:
+            raise HTTPException(404, "章节不存在")
+        return picked
+    if volume is not None:
+        key = volume.strip()
+        if not key:
+            raise HTTPException(400, "卷名不能为空")
+        picked = [ch for ch in chapters if (ch.volume or "").strip() == key]
+        if not picked:
+            raise HTTPException(404, "这一卷没有章节")
+        return picked
+    return list(chapters)
+
+
+def _export_stem(novel_title: str, chapters: list[Chapter], *, volume: str | None, chapter_id: int | None) -> str:
+    base = (novel_title or "未命名").strip() or "未命名"
+    if chapter_id is not None and chapters:
+        label = (chapters[0].title or "").strip() or f"第{chapters[0].index}章"
+        base = f"{base}-{label}"
+    elif volume is not None and volume.strip():
+        base = f"{base}-{volume.strip()}"
+    return base[:120]
+
+
 @router.get("/{novel_id}/export")
 async def export_novel(
     novel_id: int,
     fmt: str = Query("txt", alias="format"),
+    volume: str | None = Query(None),
+    chapter_id: int | None = Query(None),
     session: AsyncSession = Depends(get_session),
 ):
-    """导出小说当前章节正文为 txt / md / epub 文件下载。"""
+    """导出当前章节正文。format=txt|md|epub；volume 与 chapter_id 只能二选一。"""
     fmt = (fmt or "txt").lower().strip()
     if fmt not in ("txt", "md", "epub"):
         raise HTTPException(400, "format 仅支持 txt、md 或 epub")
@@ -211,30 +248,38 @@ async def export_novel(
     if is_reference_role(novel.role):
         raise HTTPException(409, REFERENCE_EXPORT_DETAIL)
 
-    chapters = (
+    rows = (
         await session.execute(
             select(Chapter).where(Chapter.novel_id == novel_id).order_by(Chapter.index)
         )
     ).scalars().all()
+    chapters = _scoped_chapters(list(rows), volume=volume, chapter_id=chapter_id)
+    stem = _export_stem(novel.title, chapters, volume=volume, chapter_id=chapter_id)
+    book_title = novel.title or "未命名"
+    if chapter_id is not None and chapters:
+        label = (chapters[0].title or "").strip() or f"第{chapters[0].index}章"
+        book_title = f"{book_title} · {label}"
+    elif volume is not None and volume.strip():
+        book_title = f"{book_title} · {volume.strip()}"
 
     if fmt == "epub":
         payload = build_epub(
-            title=novel.title or "未命名",
+            title=book_title,
             author=getattr(novel, "author", None),
             chapters=[
                 ((ch.title or "").strip() or f"第{ch.index}章", ch.content or "")
                 for ch in chapters
             ],
         )
-        filename = _safe_filename(novel.title, "epub")
+        filename = _safe_filename(stem, "epub")
         return Response(
             content=payload,
             media_type="application/epub+zip",
             headers={"Content-Disposition": _content_disposition(filename, "epub")},
         )
 
-    body = _build_export_text(list(chapters), fmt)
-    filename = _safe_filename(novel.title, fmt)
+    body = _build_export_text(chapters, fmt)
+    filename = _safe_filename(stem, fmt)
     media = "text/markdown; charset=utf-8" if fmt == "md" else "text/plain; charset=utf-8"
     return Response(
         content=body.encode("utf-8"),
@@ -278,18 +323,21 @@ async def import_preview(
     files: list[UploadFile] | None = File(None),
     title: str = Form("未命名小说"),
 ):
-    if files:
-        payload = []
-        for f in files:
-            data = await f.read()
-            payload.append((f.filename or "chapter.txt", data))
-        return ingestion.preview_from_files(payload, suggested_title=title)
-    if file is None:
-        raise HTTPException(400, "请上传文件")
-    raw = await file.read()
-    name = file.filename or title
-    suggested = title if title != "未命名小说" else name.rsplit(".", 1)[0]
-    return ingestion.preview_from_text(raw, suggested_title=suggested)
+    try:
+        if files:
+            payload = []
+            for f in files:
+                data = await f.read()
+                payload.append((f.filename or "chapter.txt", data))
+            return ingestion.preview_from_files(payload, suggested_title=title)
+        if file is None:
+            raise HTTPException(400, "请上传文件")
+        raw = await file.read()
+        name = file.filename or title
+        suggested = title if title != "未命名小说" else name.rsplit(".", 1)[0]
+        return ingestion.preview_from_upload(raw, filename=name, suggested_title=suggested)
+    except EpubImportError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/import/confirm", response_model=NovelOut)

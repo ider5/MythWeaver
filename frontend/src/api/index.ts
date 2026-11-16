@@ -39,6 +39,7 @@ export interface ChapterPreview {
 
 export interface ImportPreview {
   title: string
+  author?: string | null
   total_chars: number
   chapter_count: number
   chapters: ChapterPreview[]
@@ -203,9 +204,17 @@ export const novelsApi = {
   }) => api.post<Novel>('/novels/scratch', body),
   seedScratch: (id: number) => api.post<ScratchSeed>(`/novels/${id}/scratch/seed`),
   remove: (id: number) => api.delete(`/novels/${id}`),
-  /** 导出全书章节正文；format: txt（默认）| md | epub */
-  exportUrl: (id: number, format: 'txt' | 'md' | 'epub' = 'txt') =>
-    `/api/novels/${id}/export?format=${format}`,
+  /** 导出章节正文。不传范围时是全书；volume 与 chapterId 二选一。 */
+  exportUrl: (
+    id: number,
+    format: 'txt' | 'md' | 'epub' = 'txt',
+    scope?: { volume?: string; chapterId?: number },
+  ) => {
+    const params = new URLSearchParams({ format })
+    if (scope?.chapterId) params.set('chapter_id', String(scope.chapterId))
+    else if (scope?.volume) params.set('volume', scope.volume)
+    return `/api/novels/${id}/export?${params.toString()}`
+  },
   /** 下载这本小说的数据行 ZIP */
   backupUrl: (id: number) => `/api/novels/${id}/backup`,
   restoreBackup: (form: FormData) => api.post<Novel>('/novels/backup/restore', form),
