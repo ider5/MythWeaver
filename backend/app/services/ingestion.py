@@ -18,6 +18,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, Novel, StyleSample, Summary
 from app.services import story_bible as bible_svc
+from app.services import writeback as writeback_svc
 from app.services.chapter_length import refresh_original_chapter_stats
 from app.services.novel_role import normalize_role
 from app.services.retrieval import embed_and_store, embed_and_store_batch
@@ -370,29 +371,10 @@ async def _summarize_chapter(session: AsyncSession, novel: Novel, ch: Chapter) -
 
 
 async def _extract_chapter(session: AsyncSession, novel: Novel, ch: Chapter) -> None:
-    client = get_llm_client()
-    prompt = render("extract.j2", title=ch.title, content=ch.content[:8000])
-    result = await client.chat(
-        [{"role": "user", "content": prompt}],
-        endpoint=client.summary_endpoint(),
-        temperature=0.2,
-        purpose="extract",
-    )
-    try:
-        data = extract_json(result.text)
-    except Exception:  # noqa: BLE001
-        data = {}
-    if isinstance(data, dict):
+    """原稿章节直接合并进 Story Bible。生成章节改为写后提案，不走这里。"""
+    data = await writeback_svc.extract_bible_payload(session, novel.id, ch)
+    if data:
         await bible_svc.merge_extraction(session, novel.id, data, chapter_index=ch.index)
-    await log_cost(
-        session,
-        purpose="extract",
-        provider=result.provider,
-        model=result.model,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        novel_id=novel.id,
-    )
 
 
 async def _build_volume_summaries(session: AsyncSession, novel: Novel) -> None:
@@ -543,8 +525,12 @@ async def incremental_update_chapter(
     await _p(15.0, "生成章节摘要…")
     await _summarize_chapter(session, novel, chapter)
     chapter.status = "summarized"
-    await _p(40.0, "抽取实体与设定…")
-    await _extract_chapter(session, novel, chapter)
+    if chapter.is_generated:
+        await _p(40.0, "整理写后设定提案…")
+        await writeback_svc.ensure_generated_writeback(session, novel, chapter)
+    else:
+        await _p(40.0, "抽取实体与设定…")
+        await _extract_chapter(session, novel, chapter)
     chapter.status = "extracted"
     summary = (
         await session.execute(

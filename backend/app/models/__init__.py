@@ -1,5 +1,6 @@
 from app.models.entities import (
     AsyncTask,
+    BibleProposal,
     Chapter,
     ChapterVersion,
     Character,
@@ -22,6 +23,7 @@ __all__ = [
     "Character",
     "PlotThread",
     "WorldSetting",
+    "BibleProposal",
     "Outline",
     "OutlineItem",
     "AsyncTask",

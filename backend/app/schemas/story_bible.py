@@ -95,3 +95,44 @@ class StoryBibleOut(BaseModel):
     characters: list[CharacterOut]
     world_settings: list[WorldSettingOut]
     plot_threads: list[PlotThreadOut]
+
+
+class WritebackFieldOut(BaseModel):
+    key: str
+    label: str
+    before: Optional[str] = None
+    after: Optional[str] = None
+
+
+class WritebackChangeOut(BaseModel):
+    id: str
+    kind: str
+    op: str
+    target_id: Optional[int] = None
+    label: str
+    summary: str
+    fields: list[WritebackFieldOut] = Field(default_factory=list)
+    after: dict[str, Any] = Field(default_factory=dict)
+
+
+class BibleProposalOut(BaseModel):
+    id: int
+    novel_id: int
+    chapter_id: Optional[int] = None
+    chapter_index: Optional[int] = None
+    chapter_title: Optional[str] = None
+    status: str
+    changes: list[WritebackChangeOut]
+    created_at: datetime
+    updated_at: datetime
+
+
+class WritebackProposeIn(BaseModel):
+    chapter_id: int
+    force: bool = False
+
+
+class WritebackApplyIn(BaseModel):
+    """change_ids 省略时写入全部变更。"""
+
+    change_ids: Optional[list[str]] = None

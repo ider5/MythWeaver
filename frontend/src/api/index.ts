@@ -88,6 +88,36 @@ export interface PlotThread {
   resolved_chapter?: number | null
 }
 
+export interface WritebackField {
+  key: string
+  label: string
+  before?: string | null
+  after?: string | null
+}
+
+export interface WritebackChange {
+  id: string
+  kind: string
+  op: string
+  target_id?: number | null
+  label: string
+  summary: string
+  fields: WritebackField[]
+  after?: Record<string, unknown>
+}
+
+export interface BibleProposal {
+  id: number
+  novel_id: number
+  chapter_id?: number | null
+  chapter_index?: number | null
+  chapter_title?: string | null
+  status: string
+  changes: WritebackChange[]
+  created_at: string
+  updated_at: string
+}
+
 export interface OutlineItem {
   id: number
   outline_id: number
@@ -273,6 +303,16 @@ export const bibleApi = {
   updateThread: (id: number, tid: number, body: Partial<PlotThread>) =>
     api.patch(`/novels/${id}/bible/plot-threads/${tid}`, body),
   deleteThread: (id: number, tid: number) => api.delete(`/novels/${id}/bible/plot-threads/${tid}`),
+  listProposals: (id: number, status = 'pending') =>
+    api.get<BibleProposal[]>(`/novels/${id}/bible/proposals`, { params: { status } }),
+  proposeWriteback: (id: number, chapterId: number, force = false) =>
+    api.post<BibleProposal>(`/novels/${id}/bible/proposals`, { chapter_id: chapterId, force }),
+  applyProposal: (id: number, proposalId: number, changeIds?: string[]) =>
+    api.post<BibleProposal>(`/novels/${id}/bible/proposals/${proposalId}/apply`, {
+      change_ids: changeIds ?? null,
+    }),
+  dismissProposal: (id: number, proposalId: number) =>
+    api.post<BibleProposal>(`/novels/${id}/bible/proposals/${proposalId}/dismiss`),
 }
 
 export const outlineApi = {

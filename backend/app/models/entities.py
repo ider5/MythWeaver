@@ -188,6 +188,28 @@ class PlotThread(Base):
     novel: Mapped[Novel] = relationship(back_populates="plot_threads")
 
 
+class BibleProposal(Base):
+    """生成章节后的 Story Bible 变更提案。确认前不改人物、设定、伏笔。"""
+
+    __tablename__ = "bible_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), index=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    chapter_index: Mapped[Optional[int]] = mapped_column(Integer)
+    # pending | applied | dismissed
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    changes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    applied_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Outline(Base):
     __tablename__ = "outlines"
 
