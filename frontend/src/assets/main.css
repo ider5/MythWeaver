@@ -1443,7 +1443,8 @@ a.home-go {
   margin-top: 0.4rem;
 }
 
-.health-page {
+.health-page,
+.settings-page {
   max-width: 46rem;
   display: flex;
   flex-direction: column;
@@ -3062,11 +3063,13 @@ html[data-density="compact"] .app-main {
   gap: 1rem;
 }
 
-.skills__head .page-desc {
+.skills__head .page-desc,
+.settings-head .page-desc {
   max-width: 40rem;
 }
 
-.skills__head .crumb {
+.skills__head .crumb,
+.settings-head .crumb {
   margin-left: 0.35rem;
 }
 

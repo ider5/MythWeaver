@@ -1,7 +1,9 @@
 import { ref } from 'vue'
 import { healthApi, type HealthReport } from '@/api'
+import { useSettingsCopy } from '@/lib/settingsCopy'
 
 export function useHealth() {
+  const copy = useSettingsCopy()
   const report = ref<HealthReport | null>(null)
   const loading = ref(false)
   const probing = ref(false)
@@ -17,10 +19,10 @@ export function useHealth() {
       const { data } = await healthApi.get(probe)
       if (id !== seq) return
       if (data?.checks) report.value = data
-      else error.value = '接口没有响应'
+      else error.value = copy.value.healthNoResponse
     } catch {
       if (id !== seq) return
-      error.value = '接口没有响应'
+      error.value = copy.value.healthNoResponse
     } finally {
       if (id === seq) {
         loading.value = false

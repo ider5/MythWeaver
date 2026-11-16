@@ -2,9 +2,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { configApi, costsApi } from '@/api'
+import { useUiPrefs } from '@/composables/useUiPrefs'
+import { useSettingsCopy } from '@/lib/settingsCopy'
 
 const route = useRoute()
 const novelId = Number(route.params.id)
+const { locale } = useUiPrefs()
+const copy = useSettingsCopy()
 const data = ref<any>(null)
 const routes = ref<
   Array<{ stage: string; label: string; provider: string; model: string; purposes: string[] }>
@@ -22,7 +26,8 @@ function fmtMoney(n?: number, digits = 4) {
 
 function fmtInt(n?: number) {
   if (n == null || Number.isNaN(Number(n))) return '—'
-  return Number(n).toLocaleString('zh-CN')
+  const tag = locale.value === 'en' ? 'en-US' : 'zh-CN'
+  return Number(n).toLocaleString(tag)
 }
 
 const purposeRows = computed(() => {
@@ -52,30 +57,36 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-5">
+    <header class="settings-head">
+      <p class="kicker">{{ copy.costKicker }}</p>
+      <h2 class="page-title">{{ copy.costTitle }}</h2>
+      <p class="page-desc">{{ copy.costLead }}</p>
+    </header>
+
     <div class="grid sm:grid-cols-3 gap-3">
       <div class="panel metric">
-        <div class="metric__label">总成本 (USD)</div>
-        <div class="metric__value">{{ data ? fmtUsd(data.total_cost_usd) : '—' }}</div>
+        <div class="metric__label">{{ copy.totalUsd }}</div>
+        <div class="metric__value tabular">{{ data ? fmtUsd(data.total_cost_usd) : '—' }}</div>
       </div>
       <div class="panel metric">
-        <div class="metric__label">输入 tokens</div>
-        <div class="metric__value">{{ fmtInt(data?.total_input_tokens) }}</div>
+        <div class="metric__label">{{ copy.inputTokens }}</div>
+        <div class="metric__value tabular">{{ fmtInt(data?.total_input_tokens) }}</div>
       </div>
       <div class="panel metric">
-        <div class="metric__label">输出 tokens</div>
-        <div class="metric__value">{{ fmtInt(data?.total_output_tokens) }}</div>
+        <div class="metric__label">{{ copy.outputTokens }}</div>
+        <div class="metric__value tabular">{{ fmtInt(data?.total_output_tokens) }}</div>
       </div>
     </div>
 
     <div class="panel p-5">
-      <div class="font-medium mb-1">各阶段用的模型</div>
-      <p class="text-sm text-[var(--ink-muted)] mb-3">服务端按阶段绑的模型，来自配置。</p>
+      <h3 class="font-display text-lg mb-1">{{ copy.stagesTitle }}</h3>
+      <p class="text-sm text-[var(--ink-muted)] mb-3">{{ copy.routesLead }}</p>
       <table class="data-table">
         <thead>
           <tr>
-            <th>阶段</th>
-            <th>模型</th>
-            <th>用途标签</th>
+            <th>{{ copy.colStage }}</th>
+            <th>{{ copy.colModel }}</th>
+            <th>{{ copy.colPurposes }}</th>
           </tr>
         </thead>
         <tbody>
@@ -85,21 +96,21 @@ onMounted(async () => {
             <td class="meta">{{ (r.purposes || []).join(' · ') }}</td>
           </tr>
           <tr v-if="!routes.length">
-            <td colspan="3" class="empty">还没有模型配置</td>
+            <td colspan="3" class="empty">{{ copy.routesEmpty }}</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <div class="panel p-5">
-      <div class="font-medium mb-3">按用途（tokens + 成本）</div>
+      <h3 class="font-display text-lg mb-3">{{ copy.byPurpose }}</h3>
       <table class="data-table">
         <thead>
           <tr>
-            <th>用途</th>
-            <th>in</th>
-            <th>out</th>
-            <th>成本</th>
+            <th>{{ copy.colPurpose }}</th>
+            <th>{{ copy.colIn }}</th>
+            <th>{{ copy.colOut }}</th>
+            <th>{{ copy.colCost }}</th>
           </tr>
         </thead>
         <tbody>
@@ -110,21 +121,21 @@ onMounted(async () => {
             <td class="tabular">{{ fmtMoney(Number(row.cost)) }}</td>
           </tr>
           <tr v-if="data && !purposeRows.length">
-            <td colspan="4" class="empty">还没有记录</td>
+            <td colspan="4" class="empty">{{ copy.purposeEmpty }}</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <div class="panel overflow-hidden">
-      <div class="panel-head">最近调用</div>
+      <div class="panel-head font-display">{{ copy.recentTitle }}</div>
       <table class="data-table">
         <thead>
           <tr>
-            <th>用途</th>
-            <th>模型</th>
-            <th>in/out</th>
-            <th>成本</th>
+            <th>{{ copy.colPurpose }}</th>
+            <th>{{ copy.colModel }}</th>
+            <th>{{ copy.colInOut }}</th>
+            <th>{{ copy.colCost }}</th>
           </tr>
         </thead>
         <tbody>
@@ -135,7 +146,7 @@ onMounted(async () => {
             <td class="tabular">{{ fmtMoney(Number(r.cost_usd), 5) }}</td>
           </tr>
           <tr v-if="data && !(data.recent || []).length">
-            <td colspan="4" class="empty">还没有调用记录</td>
+            <td colspan="4" class="empty">{{ copy.recentEmpty }}</td>
           </tr>
         </tbody>
       </table>

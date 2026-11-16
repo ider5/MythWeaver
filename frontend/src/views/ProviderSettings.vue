@@ -9,8 +9,10 @@ import {
   type LLMProfile,
   type ProviderPreset,
 } from '@/api'
+import { useSettingsCopy } from '@/lib/settingsCopy'
 
 const route = useRoute()
+const copy = useSettingsCopy()
 const fromStart = computed(() => route.query.from === 'start')
 
 const presets = ref<ProviderPreset[]>([])
@@ -43,9 +45,9 @@ const current = computed(() => presets.value.find((p) => p.id === vendorId.value
 const sourceLabel = computed(() => {
   if (!active.value) return ''
   if (active.value.source === 'profile' && active.value.profile_name) {
-    return `配置「${active.value.profile_name}」`
+    return copy.value.profileSource(active.value.profile_name)
   }
-  return '环境变量 .env'
+  return copy.value.envSource
 })
 
 function applyPreset(p: ProviderPreset | undefined) {
@@ -60,8 +62,8 @@ watch(vendorId, (id) => {
 })
 
 function keyText(key: KeyStatus | undefined) {
-  if (!key || key.mode === 'anonymous') return '未使用密钥'
-  return `已配置密钥 ${key.mask || ''}`.trim()
+  if (!key || key.mode === 'anonymous') return copy.value.keyUnused
+  return copy.value.keyConfigured(key.mask || '')
 }
 
 function errText(e: unknown, fallback: string) {
@@ -92,7 +94,7 @@ onMounted(async () => {
     await loadAll()
     applyPreset(current.value)
   } catch (e: unknown) {
-    loadError.value = errText(e, '加载设置失败')
+    loadError.value = errText(e, copy.value.loadFailed)
   } finally {
     loading.value = false
   }
@@ -101,7 +103,7 @@ onMounted(async () => {
 async function saveCurrent() {
   const name = profileName.value.trim()
   if (!name) {
-    notice.value = '先写配置名称'
+    notice.value = copy.value.needName
     return
   }
   pending.value = true
@@ -114,9 +116,11 @@ async function saveCurrent() {
     })
     profileName.value = ''
     await loadAll()
-    notice.value = activateOnSave.value ? `已保存并启用「${name}」` : `已保存「${name}」`
+    notice.value = activateOnSave.value
+      ? copy.value.savedAndEnabled(name)
+      : copy.value.savedOnly(name)
   } catch (e: unknown) {
-    notice.value = errText(e, '保存失败')
+    notice.value = errText(e, copy.value.saveFailed)
   } finally {
     pending.value = false
   }
@@ -128,9 +132,9 @@ async function activate(profile: LLMProfile) {
   try {
     await providersApi.activateProfile(profile.id)
     await loadAll()
-    notice.value = `已启用「${profile.name}」`
+    notice.value = copy.value.enabledName(profile.name)
   } catch (e: unknown) {
-    notice.value = errText(e, '启用失败')
+    notice.value = errText(e, copy.value.activateFailed)
   } finally {
     pending.value = false
   }
@@ -151,30 +155,30 @@ async function saveRename(profile: LLMProfile) {
     renamingId.value = null
     await loadAll()
   } catch (e: unknown) {
-    notice.value = errText(e, '改名失败')
+    notice.value = errText(e, copy.value.renameFailed)
   } finally {
     pending.value = false
   }
 }
 
 async function overwrite(profile: LLMProfile) {
-  if (!window.confirm(`用当前生效配置覆盖「${profile.name}」？原来的地址和密钥会被换掉。`)) return
+  if (!window.confirm(copy.value.overwriteConfirm(profile.name))) return
   pending.value = true
   notice.value = ''
   try {
     await providersApi.updateProfileFromCurrent(profile.id)
     await loadAll()
-    notice.value = `已用当前生效配置覆盖「${profile.name}」`
+    notice.value = copy.value.overwritten(profile.name)
   } catch (e: unknown) {
-    notice.value = errText(e, '覆盖失败')
+    notice.value = errText(e, copy.value.overwriteFailed)
   } finally {
     pending.value = false
   }
 }
 
 async function remove(profile: LLMProfile) {
-  const extra = profile.is_active ? '删除后回到 .env。' : ''
-  if (!window.confirm(`删除配置「${profile.name}」？${extra}`)) return
+  const extra = profile.is_active ? copy.value.deleteActiveExtra : ''
+  if (!window.confirm(copy.value.deleteConfirm(profile.name, extra))) return
   pending.value = true
   notice.value = ''
   try {
@@ -182,7 +186,7 @@ async function remove(profile: LLMProfile) {
     if (renamingId.value === profile.id) renamingId.value = null
     await loadAll()
   } catch (e: unknown) {
-    notice.value = errText(e, '删除失败')
+    notice.value = errText(e, copy.value.deleteFailed)
   } finally {
     pending.value = false
   }
@@ -202,7 +206,7 @@ async function runTest() {
   } catch (e: unknown) {
     const detail =
       (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-      (e instanceof Error ? e.message : '请求失败')
+      (e instanceof Error ? e.message : copy.value.requestFailed)
     result.value = { ok: false, error: String(detail) }
   } finally {
     testing.value = false
@@ -211,34 +215,35 @@ async function runTest() {
 </script>
 
 <template>
-  <div class="space-y-5 max-w-2xl">
-    <div>
-      <h1 class="text-xl font-semibold tracking-tight">模型设置</h1>
-      <p class="mt-1 text-sm text-[var(--ink-muted)]">
-        当前续写和向量用的连接在下面。配置存在本机数据库，启用后马上生效。密钥只显示末四位。
-        <RouterLink class="crumb" to="/settings/health">运行状态</RouterLink>
-        看接口、数据库和模型。
-        <RouterLink class="crumb" to="/settings/appearance">界面外观在这里调整。</RouterLink>
+  <div class="settings-page">
+    <header class="settings-head">
+      <p class="kicker">{{ copy.providersKicker }}</p>
+      <h1 class="page-title">{{ copy.providersTitle }}</h1>
+      <p class="page-desc">
+        {{ copy.providersLead }}
+        <RouterLink class="crumb" to="/settings/health">{{ copy.providersHealthLink }}</RouterLink>
+        {{ copy.providersHealthTail }}
+        <RouterLink class="crumb" to="/settings/appearance">{{ copy.providersLookLink }}</RouterLink>
       </p>
-    </div>
+    </header>
 
     <p v-if="fromStart" class="alert alert--ok">
-      保存或测通之后回到首页，选开书或续写。
-      <RouterLink class="crumb" to="/">回到首页</RouterLink>
+      {{ copy.fromStart }}
+      <RouterLink class="crumb" to="/">{{ copy.backHome }}</RouterLink>
     </p>
 
-    <div v-if="loading" class="panel p-5 text-sm text-[var(--ink-muted)]">加载设置…</div>
-    <div v-else-if="loadError" class="panel p-5 text-sm text-[var(--danger)]">{{ loadError }}</div>
+    <p v-if="loading" class="meta">{{ copy.loadingSettings }}</p>
+    <p v-else-if="loadError" class="alert alert--danger">{{ loadError }}</p>
 
     <template v-else>
     <section class="panel p-5 space-y-3">
       <div class="flex items-baseline justify-between gap-3">
-        <h2 class="font-medium">当前生效</h2>
+        <h2 class="font-display text-lg">{{ copy.activeTitle }}</h2>
         <span class="text-sm text-[var(--accent)]">{{ sourceLabel }}</span>
       </div>
       <dl v-if="active" class="active-lines">
         <div>
-          <dt>续写</dt>
+          <dt>{{ copy.draftLabel }}</dt>
           <dd>
             <span class="tabular">{{ active.generation_provider }} / {{ active.generation_model }}</span>
             <span class="meta">{{ active.generation_base_url }}</span>
@@ -246,9 +251,9 @@ async function runTest() {
           </dd>
         </div>
         <div>
-          <dt>摘要</dt>
+          <dt>{{ copy.summaryLabel }}</dt>
           <dd>
-            <template v-if="active.summary_follows_generation">与续写相同</template>
+            <template v-if="active.summary_follows_generation">{{ copy.sameAsDraft }}</template>
             <template v-else>
               <span class="tabular">{{ active.summary_provider }} / {{ active.summary_model }}</span>
               <span class="meta">{{ active.summary_base_url }}</span>
@@ -257,23 +262,23 @@ async function runTest() {
           </dd>
         </div>
         <div>
-          <dt>向量</dt>
+          <dt>{{ copy.embedLabel }}</dt>
           <dd>
-            <span class="tabular">{{ active.embedding_model }} · {{ active.embedding_dims }} 维</span>
+            <span class="tabular">{{ active.embedding_model }} · {{ copy.dims(active.embedding_dims) }}</span>
             <span class="meta">{{ active.embedding_base_url }}</span>
             <span>{{ keyText(active.embedding_key) }}</span>
           </dd>
         </div>
       </dl>
       <p v-if="active?.dims_mismatch" class="text-sm text-[var(--warn)]">
-        这条配置的向量维度是 {{ active.embedding_dims }}，当前库按 {{ active.vec_dims }} 建的。不一致时新向量可能进不了向量表。
+        {{ copy.dimsMismatchBefore }}<span class="tabular">{{ active.embedding_dims }}</span>{{ copy.dimsMismatchBetween }}<span class="tabular">{{ active.vec_dims }}</span>{{ copy.dimsMismatchAfter }}
       </p>
     </section>
 
     <section class="panel p-5 space-y-3">
-      <h2 class="font-medium">已存配置</h2>
-      <p v-if="!profiles.length" class="text-sm text-[var(--ink-muted)]">
-        还没有配置。没启用时继续用 .env。
+      <h2 class="font-display text-lg">{{ copy.savedTitle }}</h2>
+      <p v-if="!profiles.length" class="empty">
+        {{ copy.savedEmpty }}
       </p>
       <ul v-else class="space-y-2">
         <li v-for="p in profiles" :key="p.id" class="profile-card" :class="{ 'is-active': p.is_active }">
@@ -281,19 +286,18 @@ async function runTest() {
             <div class="min-w-0">
               <div v-if="renamingId === p.id" class="flex flex-wrap items-center gap-2">
                 <input v-model="renameValue" class="input" style="width: 14rem" maxlength="64" />
-                <button type="button" class="btn btn-sm" :disabled="pending" @click="saveRename(p)">保存</button>
-                <button type="button" class="btn-ghost btn-sm" :disabled="pending" @click="renamingId = null">取消</button>
+                <button type="button" class="btn btn-sm" :disabled="pending" @click="saveRename(p)">{{ copy.save }}</button>
+                <button type="button" class="btn-ghost btn-sm" :disabled="pending" @click="renamingId = null">{{ copy.cancel }}</button>
               </div>
-              <div v-else class="font-medium">
+              <div v-else class="font-display">
                 {{ p.name }}
-                <span v-if="p.is_active" class="ml-2 text-xs text-[var(--accent)]">使用中</span>
+                <span v-if="p.is_active" class="ml-2 text-xs text-[var(--accent)]">{{ copy.inUse }}</span>
               </div>
               <p class="mt-1 text-sm text-[var(--ink-muted)]">
-                <span class="tabular">{{ p.generation_provider }} / {{ p.generation_model }}</span>
-                · 向量 {{ p.embedding_model }}
+                <span class="tabular">{{ p.generation_provider }} / {{ p.generation_model }}</span>{{ copy.profileEmbed(p.embedding_model) }}
               </p>
               <p class="text-xs text-[var(--ink-muted)]">
-                续写{{ keyText(p.generation_key) }} · 向量{{ keyText(p.embedding_key) }}
+                {{ copy.profileKeys(keyText(p.generation_key), keyText(p.embedding_key)) }}
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -303,15 +307,15 @@ async function runTest() {
                 class="btn btn-sm"
                 :disabled="pending"
                 @click="activate(p)"
-              >启用</button>
-              <button type="button" class="btn-ghost btn-sm" :disabled="pending" @click="startRename(p)">改名</button>
+              >{{ copy.activate }}</button>
+              <button type="button" class="btn-ghost btn-sm" :disabled="pending" @click="startRename(p)">{{ copy.rename }}</button>
               <button
                 type="button"
                 class="btn-ghost btn-sm"
                 :disabled="pending || p.is_active"
                 @click="overwrite(p)"
-              >用当前生效覆盖</button>
-              <button type="button" class="btn-danger btn-sm" :disabled="pending" @click="remove(p)">删除</button>
+              >{{ copy.overwrite }}</button>
+              <button type="button" class="btn-danger btn-sm" :disabled="pending" @click="remove(p)">{{ copy.remove }}</button>
             </div>
           </div>
         </li>
@@ -319,31 +323,31 @@ async function runTest() {
     </section>
 
     <form class="panel p-5 space-y-3" @submit.prevent="saveCurrent">
-      <h2 class="font-medium">存下当前生效配置</h2>
+      <h2 class="font-display text-lg">{{ copy.saveProfileTitle }}</h2>
       <p class="text-sm text-[var(--ink-muted)]">
-        把上面正在用的地址、模型和密钥存成一条。密钥写入本机库，页面上不回显。
+        {{ copy.saveProfileLead }}
       </p>
       <div class="flex flex-wrap items-end gap-3">
-        <label class="block space-y-1.5" style="flex: 1 1 14rem">
-          <span class="text-sm font-medium">名称</span>
-          <input v-model="profileName" class="input w-full" maxlength="64" placeholder="例如 DeepSeek 长文" />
+        <label class="block" style="flex: 1 1 14rem">
+          <span class="label">{{ copy.nameLabel }}</span>
+          <input v-model="profileName" class="input w-full" maxlength="64" :placeholder="copy.namePlaceholder" />
         </label>
         <label class="check mb-2">
           <input v-model="activateOnSave" type="checkbox" />
-          保存后启用
+          {{ copy.activateOnSave }}
         </label>
-        <button type="submit" class="btn mb-0.5" :disabled="pending || !profileName.trim()">存为配置</button>
+        <button type="submit" class="btn mb-0.5" :disabled="pending || !profileName.trim()">{{ copy.saveAsProfile }}</button>
       </div>
       <p v-if="notice" class="text-sm">{{ notice }}</p>
     </form>
 
     <form class="panel p-5 space-y-4" @submit.prevent="runTest">
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium">厂商</span>
+      <label class="block">
+        <span class="label">{{ copy.vendor }}</span>
         <select v-model="vendorId" class="input w-full">
           <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.label }}</option>
         </select>
-        <span v-if="current?.notes" class="block text-xs text-[var(--ink-muted)]">
+        <span v-if="current?.notes" class="meta mt-1.5 block">
           {{ current.notes }}
           <a
             v-if="current.docs_url"
@@ -351,68 +355,69 @@ async function runTest() {
             target="_blank"
             rel="noopener noreferrer"
             class="ml-1 underline underline-offset-2"
-          >文档</a>
+          >{{ copy.docs }}</a>
         </span>
       </label>
 
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium">Base URL</span>
-        <input v-model="baseUrl" class="input w-full" placeholder="https://api.example.com/v1" />
+      <label class="block">
+        <span class="label">{{ copy.baseUrl }}</span>
+        <input v-model="baseUrl" class="input w-full" :placeholder="copy.baseUrlPlaceholder" />
       </label>
 
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium">模型</span>
+      <label class="block">
+        <span class="label">{{ copy.modelLabel }}</span>
         <input
           v-model="model"
           class="input w-full"
           list="preset-models"
-          placeholder="model-id"
+          :placeholder="copy.modelPlaceholder"
         />
         <datalist id="preset-models">
           <option v-for="m in current?.models || []" :key="m" :value="m" />
         </datalist>
       </label>
 
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium">API Key</span>
+      <label class="block">
+        <span class="label">{{ copy.apiKey }}</span>
         <input
           v-model="apiKey"
           type="password"
           autocomplete="off"
           class="input w-full"
-          placeholder="仅用于本次探测"
+          :placeholder="copy.keyPlaceholder"
           required
         />
       </label>
 
       <div class="flex items-center gap-3 pt-1">
         <button type="submit" class="btn" :disabled="testing || !apiKey.trim()">
-          {{ testing ? '测试中…' : '测试连接' }}
+          {{ testing ? copy.testing : copy.testConnection }}
         </button>
-        <span class="text-xs text-[var(--ink-muted)]">只探测，不写入配置。匿名端点填 anonymous。</span>
+        <span class="meta">{{ copy.testHint }}</span>
       </div>
 
       <div
         v-if="result"
-        class="rounded-[var(--radius-sm)] px-3 py-2.5 text-sm"
-        :class="result.ok ? 'bg-[var(--accent-soft)]' : 'bg-[var(--danger-soft)]'"
+        class="alert"
+        :class="result.ok ? 'alert--ok' : 'alert--danger'"
+        role="status"
       >
         <template v-if="result.ok">
-          连接成功
+          {{ copy.connected }}
           <span v-if="result.latency_ms != null" class="tabular"> · {{ result.latency_ms }} ms</span>
-          <span v-if="result.reply" class="text-[var(--ink-muted)]"> · 回复「{{ result.reply }}」</span>
+          <span v-if="result.reply" class="text-[var(--ink-muted)]"> · {{ copy.replyBit(result.reply) }}</span>
         </template>
         <template v-else>
-          连接失败：{{ result.error || '未知错误' }}
+          {{ copy.connectFailed }}{{ result.error || copy.unknownError }}
         </template>
       </div>
     </form>
 
     <div v-if="stageRoutes.length" class="panel p-5 space-y-3">
       <div>
-        <div class="font-medium">各阶段用的模型</div>
+        <h2 class="font-display text-lg">{{ copy.stagesTitle }}</h2>
         <p class="mt-1 text-sm text-[var(--ink-muted)]">
-          摘要和审校看摘要模型，大纲和续写看续写模型，向量单独走。启用配置后这里跟着变。
+          {{ copy.stagesLead }}
         </p>
       </div>
       <ul class="text-sm space-y-2">
@@ -433,7 +438,7 @@ async function runTest() {
 }
 .active-lines > div {
   display: grid;
-  grid-template-columns: 3.25rem 1fr;
+  grid-template-columns: minmax(4.75rem, max-content) 1fr;
   gap: 0.75rem;
   align-items: start;
 }
