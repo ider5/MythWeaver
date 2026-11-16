@@ -189,6 +189,24 @@ export const novelsApi = {
       content,
       commit_to_knowledge: commit,
     }),
+  criticSelectRevise: (
+    nid: number,
+    cid: number,
+    body: {
+      content: string
+      issues: Array<{ type: string; severity?: string; message: string; detail?: string | null }>
+      confirm?: boolean
+      commit_to_knowledge?: boolean
+    },
+  ) =>
+    api.post<{
+      base_content: string
+      revised_content: string
+      consistency?: Record<string, unknown> | null
+      changed: boolean
+      version_id?: number | null
+      task_id?: number | null
+    }>(`/novels/${nid}/chapters/${cid}/critic-select-revise`, body),
   /** 仅重新入队知识库增量更新，不新建 user_edited 版本（用于入库失败重试） */
   commitKnowledge: (nid: number, cid: number) =>
     api.post<{

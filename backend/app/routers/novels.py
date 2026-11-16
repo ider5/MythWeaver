@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models import Chapter, ChapterVersion, Novel
+from app.schemas.generation import ConsistencyIssue
 from app.schemas.novel import (
     ChapterOut,
     ChapterPreview,
@@ -18,6 +19,8 @@ from app.schemas.novel import (
     ChapterReviseOut,
     ChapterVersionOut,
     CommitKnowledgeOut,
+    CriticSelectReviseIn,
+    CriticSelectReviseOut,
     ImportConfirmIn,
     ImportPreviewOut,
     NovelCreate,
@@ -26,6 +29,7 @@ from app.schemas.novel import (
 )
 from app.services import ingestion
 from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.consistency import critic_revise_selected
 from app.services.generation import (
     delete_chapter,
     delete_chapter_version,
@@ -295,6 +299,59 @@ async def revise_chapter(
         consistency_report=ver.consistency_report,
         parent_version_id=ver.parent_version_id,
         created_at=ver.created_at,
+        task_id=task_id,
+    )
+
+
+@router.post(
+    "/{novel_id}/chapters/{chapter_id}/critic-select-revise",
+    response_model=CriticSelectReviseOut,
+)
+async def critic_select_revise(
+    novel_id: int,
+    chapter_id: int,
+    body: CriticSelectReviseIn,
+    session: AsyncSession = Depends(get_session),
+):
+    """按勾选问题修稿：默认仅预览；confirm=true 时写入版本（可选入库）。"""
+    ch = await session.get(Chapter, chapter_id)
+    if not ch or ch.novel_id != novel_id:
+        raise HTTPException(404, "章节不存在")
+    novel = await session.get(Novel, novel_id)
+    if novel is None:
+        raise HTTPException(404, "小说不存在")
+
+    issues = [
+        ConsistencyIssue(
+            type=i.type,
+            severity=i.severity,
+            message=i.message,
+            detail=i.detail,
+        )
+        for i in body.issues
+    ]
+    base = body.content
+    revised, report = await critic_revise_selected(session, novel, base, issues)
+    changed = revised.strip() != base.strip()
+    version_id = None
+    task_id = None
+    if body.confirm and changed:
+        ver, task_id = await revise_and_commit(
+            session,
+            chapter_id,
+            revised,
+            commit_to_knowledge=body.commit_to_knowledge,
+        )
+        version_id = ver.id
+        if ver.consistency_report is None:
+            ver.consistency_report = report.model_dump()
+            await session.commit()
+    return CriticSelectReviseOut(
+        base_content=base,
+        revised_content=revised,
+        consistency=report.model_dump(),
+        changed=changed,
+        version_id=version_id,
         task_id=task_id,
     )
 

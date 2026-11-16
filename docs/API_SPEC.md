@@ -30,6 +30,7 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 | GET | `/api/novels/{id}/chapters/{cid}` | 章节正文 |
 | GET | `/api/novels/{id}/chapters/{cid}/versions` | 版本链 |
 | POST | `/api/novels/{id}/chapters/{cid}/revise` | `{ content, commit_to_knowledge }` |
+| POST | `/api/novels/{id}/chapters/{cid}/critic-select-revise` | 按勾选问题修稿：`{ content, issues[], confirm?, commit_to_knowledge? }` → `{ base_content, revised_content, consistency, changed, version_id?, task_id? }`；`confirm=false` 仅预览不落库 |
 
 ## Story Bible
 
