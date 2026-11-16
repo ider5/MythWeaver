@@ -6,7 +6,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -254,21 +254,86 @@ async def _drop_segment_checkpoints(session: AsyncSession, chapter_id: int) -> N
     await session.commit()
 
 
+_GENERATION_BUSY = "已有生成进行中，请结束后再试"
+
+
+async def _claim_generation(
+    session: AsyncSession,
+    novel: Novel,
+    item: OutlineItem,
+) -> bool:
+    """原子占用小说和大纲条目。条件更新失败就整段回滚，避免只锁住其中一个。"""
+    novel_res = await session.execute(
+        update(Novel)
+        .where(Novel.id == novel.id, Novel.status != "generating")
+        .values(status="generating")
+    )
+    item_res = await session.execute(
+        update(OutlineItem)
+        .where(OutlineItem.id == item.id, OutlineItem.status != "generating")
+        .values(status="generating")
+    )
+    if novel_res.rowcount != 1 or item_res.rowcount != 1:
+        await session.rollback()
+        return False
+    novel.status = "generating"
+    item.status = "generating"
+    await session.commit()
+    return True
+
+
 async def _reset_generating_status(
     session: AsyncSession,
-    novel: Novel | None,
-    item: OutlineItem | None,
+    *,
+    novel_id: int | None,
+    item_id: int | None,
 ) -> None:
-    """生成失败时恢复状态，便于用户重试。"""
+    """只清掉仍是 generating 的行。
+
+    用条件更新，不用内存里的 status：失败事件交出控制权之后，另一章可能已经重新占用。
+    """
     try:
-        if item is not None and item.status == "generating":
-            item.status = "pending"
-        if novel is not None and novel.status == "generating":
-            novel.status = "ready"
+        if item_id is not None:
+            await session.execute(
+                update(OutlineItem)
+                .where(OutlineItem.id == item_id, OutlineItem.status == "generating")
+                .values(status="pending")
+            )
+        if novel_id is not None:
+            await session.execute(
+                update(Novel)
+                .where(Novel.id == novel_id, Novel.status == "generating")
+                .values(status="ready")
+            )
         await session.commit()
     except Exception:  # noqa: BLE001
         logger.exception("重置 generating 状态失败")
         await session.rollback()
+
+
+async def _with_saved_draft(
+    session: AsyncSession,
+    novel_id: int,
+    item_id: int,
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """段落已经落库时告诉客户端去加载，而不是把编辑器当成失败空稿。"""
+    if event.get("event") != "error" or _GENERATION_BUSY in str(event.get("message") or ""):
+        return event
+    chapter = await session.scalar(
+        select(Chapter)
+        .where(Chapter.novel_id == novel_id, Chapter.outline_item_id == item_id)
+        .order_by(Chapter.id.desc())
+        .limit(1)
+    )
+    has_draft = chapter is not None and bool((chapter.content or "").strip())
+    # 读完就结束事务，避免把错误事件交出去时还占着连接。
+    await session.rollback()
+    if not has_draft:
+        return event
+    marked = dict(event)
+    marked["draft_saved"] = True
+    return marked
 
 
 async def stream_generate_chapter(
@@ -297,17 +362,17 @@ async def stream_generate_chapter(
     if outline is None or outline.novel_id != novel_id:
         yield {"event": "error", "message": "大纲条目不属于该小说"}
         return
-    # 拒绝并行 SSE：已在生成中则直接失败（连续生成任务会串行调用本函数，章与章之间会清掉 generating）。
-    if item.status == "generating" or novel.status == "generating":
-        yield {"event": "error", "message": "已有生成进行中，请结束后再试"}
+    # 拒绝并行：条件更新占住这本书和这一条。连续生成在章与章之间会放开。
+    if not await _claim_generation(session, novel, item):
+        yield {"event": "error", "message": _GENERATION_BUSY}
         return
 
+    novel_pk = int(novel.id)
+    item_pk = int(item.id)
     finished = False
+    pending_error: dict[str, Any] | None = None
+    done_event: dict[str, Any] | None = None
     try:
-        item.status = "generating"
-        novel.status = "generating"
-        await session.commit()
-
         settings = get_settings()
         resolved_target = await resolve_target_chars(session, novel, target_chars)
         segments = plan_chapter_segments(resolved_target, item.key_points or [])
@@ -392,6 +457,9 @@ async def stream_generate_chapter(
                     min_tokens=1024,
                     max_tokens=settings.generation_max_tokens,
                 )
+
+            # 模型请求期间不能占着写事务，否则另一路生成会排队，等到本章结束、状态放回 ready 后再抢锁成功。
+            await session.commit()
 
             seg_text = ""
             async for chunk in client.stream(
@@ -526,7 +594,7 @@ async def stream_generate_chapter(
         await session.commit()
         await _drop_segment_checkpoints(session, chapter.id)
 
-        yield {
+        done_event = {
             "event": "done",
             "chapter_id": chapter.id,
             "version_id": ver.id,
@@ -541,10 +609,20 @@ async def stream_generate_chapter(
         finished = True
     except Exception as exc:  # noqa: BLE001
         logger.exception("stream_generate_chapter failed novel=%s item=%s", novel_id, outline_item_id)
-        yield {"event": "error", "message": f"生成失败: {exc}"}
+        pending_error = {"event": "error", "message": f"生成失败: {exc}"}
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            logger.exception("生成失败后回滚会话失败")
     finally:
+        # 先放开状态，再把错误交给调用方。否则调用方能在重置提交前重新占用，随后被清掉。
         if not finished:
-            await _reset_generating_status(session, novel, item)
+            await _reset_generating_status(session, novel_id=novel_pk, item_id=item_pk)
+
+    if pending_error is not None:
+        yield await _with_saved_draft(session, novel_pk, item_pk, pending_error)
+    elif done_event is not None:
+        yield done_event
 
 
 async def update_recurrent_memory(session: AsyncSession, novel_id: int, chapter: Chapter) -> None:

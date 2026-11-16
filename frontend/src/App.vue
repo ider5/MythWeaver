@@ -5,6 +5,11 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 const route = useRoute()
 const wide = computed(() => String(route.path).startsWith('/novels/'))
 const home = computed(() => route.name === 'home')
+// 同一本书的工作台共用一个缓存。入库进度是另一个页面，不能跟工作台抢同一个 key。
+const aliveKey = computed(() => {
+  const root = String(route.matched[0]?.name || route.name || 'view')
+  return `${root}:${route.path.split('/').slice(0, 3).join('/')}`
+})
 </script>
 
 <template>
@@ -47,7 +52,7 @@ const home = computed(() => route.name === 'home')
     <main class="app-main" :class="{ 'app-main--wide': wide, 'app-main--home': home }">
       <RouterView v-slot="{ Component }">
         <KeepAlive :max="12">
-          <component :is="Component" :key="route.path.split('/').slice(0, 3).join('/')" />
+          <component :is="Component" :key="aliveKey" />
         </KeepAlive>
       </RouterView>
     </main>

@@ -77,6 +77,7 @@ const targetTouched = ref(false)
 const SEGMENT_HINT = 4500
 let es: EventSource | null = null
 let reviseEs: EventSource | null = null
+let lastEventId = 0
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** 避免快速切换条目时旧请求覆盖新选择 */
 let loadSeq = 0
@@ -376,12 +377,116 @@ function clearIdleWatch() {
   }
 }
 
+function streamUrl(attach: boolean) {
+  if (!selected.value) return ''
+  const params = new URLSearchParams({
+    outline_item_id: String(selected.value.id),
+    run_critic: String(runCritic.value),
+    max_critic_rounds: String(runCritic.value ? (willSegment.value ? 0 : maxCriticRounds.value) : 0),
+  })
+  const n = Number(targetChars.value)
+  if (Number.isFinite(n) && n >= 500) params.set('target_chars', String(Math.round(n)))
+  if (attach) {
+    params.set('attach', '1')
+    if (lastEventId > 0) params.set('after', String(lastEventId))
+  }
+  return `/api/novels/${novelId}/generate/stream?${params}`
+}
+
 function armIdleWatch() {
   clearIdleWatch()
   idleTimer = setTimeout(() => {
     if (!streaming.value) return
-    stopStream('生成超时：长时间无响应，连接可能已断开，请重试')
+    // 服务端还在写。关掉编辑器会让用户改到一半的稿被后写的正文盖掉。
+    status.value = '连接断了，正在接上已写的内容'
+    openGenerateStream(streamEpoch, true)
   }, IDLE_TIMEOUT_MS)
+}
+
+function openGenerateStream(epoch: number, attach: boolean) {
+  const url = streamUrl(attach)
+  if (!url) return
+  es?.close()
+  const source = new EventSource(url)
+  es = source
+  armIdleWatch()
+  source.onmessage = async (ev) => {
+    if (epoch !== streamEpoch || source !== es) return
+    const id = Number(ev.lastEventId)
+    if (Number.isFinite(id) && id > lastEventId) lastEventId = id
+    armIdleWatch()
+    let data: any
+    try {
+      data = JSON.parse(ev.data)
+    } catch {
+      return
+    }
+    if (data.event === 'ping') return
+    if (data.event === 'status' || data.event === 'segment') {
+      status.value = data.message || status.value
+      if (data.chapter_id) chapterId.value = data.chapter_id
+      if (data.event === 'segment') return
+    }
+    if (data.event === 'delta') stream.append(data.text || '')
+    if (data.event === 'error' && data.draft_saved) {
+      clearIdleWatch()
+      streaming.value = false
+      source.close()
+      if (es === source) es = null
+      const note = data.message || '已写完的段落还在，可以接着改。'
+      if (selected.value) await loadChapterForItem(selected.value)
+      if (epoch !== streamEpoch) return
+      status.value = note
+      error.value = ''
+      return
+    }
+    if (data.event === 'error') {
+      const raw = data.message || '生成失败'
+      const friendly =
+        /UNIQUE constraint failed:\s*chapters\.novel_id,\s*chapters\.index/i.test(raw)
+          ? '这一章已经有正文。刷新后再生成，会盖掉现有草稿。'
+          : raw
+      stopStream(friendly)
+      return
+    }
+    if (data.event === 'done') {
+      clearIdleWatch()
+      stream.sync()
+      content.value = data.content || stream.read()
+      stream.clearDom()
+      consistency.value = data.consistency
+      qualityHints.value = data.quality?.hints || []
+      syncIssueSelection(data.consistency?.issues)
+      clearPreview()
+      chapterId.value = data.chapter_id
+      activeVersionId.value = data.version_id ?? null
+      streaming.value = false
+      writebackToken.value += 1
+      status.value = data.overwritten ? '完成（已覆盖已有章节）' : '完成'
+      source.close()
+      if (es === source) es = null
+      await load()
+      if (epoch !== streamEpoch) return
+      if (chapterId.value) {
+        const { data: vers } = await novelsApi.versions(novelId, chapterId.value)
+        if (epoch !== streamEpoch) return
+        applyLatestVersion(vers)
+        if (data.content) content.value = data.content
+      }
+    }
+  }
+  source.onerror = () => {
+    // 正常结束也会触发 error。还在写就交给浏览器按 Last-Event-ID 接上，不把断线当成失败。
+    if (epoch !== streamEpoch || source !== es) return
+    if (!streaming.value) {
+      clearIdleWatch()
+      source.close()
+      es = null
+      return
+    }
+    status.value = '连接断了，正在接上已写的内容'
+    armIdleWatch()
+  }
 }
 
 function stopStream(msg?: string) {
@@ -612,95 +717,11 @@ async function startGenerate() {
   versions.value = []
   activeVersionId.value = null
   error.value = ''
+  lastEventId = 0
   es?.close()
   await nextTick()
   stream.reset('')
-  const params = new URLSearchParams({
-    outline_item_id: String(selected.value.id),
-    run_critic: String(runCritic.value),
-    max_critic_rounds: String(runCritic.value ? (willSegment.value ? 0 : maxCriticRounds.value) : 0),
-  })
-  const n = Number(targetChars.value)
-  if (Number.isFinite(n) && n >= 500) {
-    params.set('target_chars', String(Math.round(n)))
-  }
-  const url = `/api/novels/${novelId}/generate/stream?${params}`
-  es = new EventSource(url)
-  armIdleWatch()
-  es.onmessage = async (ev) => {
-    if (epoch !== streamEpoch) return
-    armIdleWatch()
-    let data: any
-    try {
-      data = JSON.parse(ev.data)
-    } catch {
-      return
-    }
-    if (data.event === 'ping') return
-    if (data.event === 'status' || data.event === 'segment') {
-      status.value = data.message || status.value
-      if (data.chapter_id) chapterId.value = data.chapter_id
-      if (data.event === 'segment') return
-    }
-    if (data.event === 'delta') stream.append(data.text || '')
-    if (data.event === 'error' && data.draft_saved) {
-      clearIdleWatch()
-      streaming.value = false
-      es?.close()
-      es = null
-      const note = data.message || '已写完的段落还在，可以接着改。'
-      if (selected.value) await loadChapterForItem(selected.value)
-      if (epoch !== streamEpoch) return
-      status.value = note
-      error.value = ''
-      return
-    }
-    if (data.event === 'error') {
-      const raw = data.message || '生成失败'
-      const friendly =
-        /UNIQUE constraint failed:\s*chapters\.novel_id,\s*chapters\.index/i.test(raw)
-          ? '这一章已经有正文。刷新后再生成，会盖掉现有草稿。'
-          : raw
-      stopStream(friendly)
-      return
-    }
-    if (data.event === 'done') {
-      clearIdleWatch()
-      stream.sync()
-      content.value = data.content || stream.read()
-      stream.clearDom()
-      consistency.value = data.consistency
-      qualityHints.value = data.quality?.hints || []
-      syncIssueSelection(data.consistency?.issues)
-      clearPreview()
-      chapterId.value = data.chapter_id
-      activeVersionId.value = data.version_id ?? null
-      streaming.value = false
-      writebackToken.value += 1
-      status.value = data.overwritten ? '完成（已覆盖已有章节）' : '完成'
-      es?.close()
-      es = null
-      await load()
-      if (epoch !== streamEpoch) return
-      if (chapterId.value) {
-        const { data: vers } = await novelsApi.versions(novelId, chapterId.value)
-        if (epoch !== streamEpoch) return
-        applyLatestVersion(vers)
-        if (data.content) content.value = data.content
-      }
-    }
-  }
-  es.onerror = () => {
-    // 正常结束也会触发 error。还在写就交给浏览器按 Last-Event-ID 接上，不把断线当成失败。
-    if (!streaming.value) {
-      clearIdleWatch()
-      es?.close()
-      es = null
-      return
-    }
-    status.value = '连接断了，正在接上已写的内容'
-    armIdleWatch()
-  }
+  openGenerateStream(epoch, false)
 }
 
 async function saveRevise() {

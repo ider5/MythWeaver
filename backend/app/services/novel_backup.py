@@ -772,11 +772,19 @@ async def _write(session: AsyncSession, tables: dict[str, list[dict[str, Any]]],
         return {"novel_id": new_id}
 
     outline_ids = await _add_rows(session, Outline, tables["outlines"], _novel_id)
+
+    def _outline_item_replace(row: dict[str, Any]) -> dict[str, Any]:
+        replaced = {"outline_id": outline_ids[row["outline_id"]]}
+        # 备份可以发生在生成中途。原书保持原状态；新书不能留着 generating，否则无法再写。
+        if row.get("status") == "generating":
+            replaced["status"] = "pending"
+        return replaced
+
     item_ids = await _add_rows(
         session,
         OutlineItem,
         tables["outline_items"],
-        lambda row: {"outline_id": outline_ids[row["outline_id"]]},
+        _outline_item_replace,
     )
 
     def _chapter_replace(row: dict[str, Any]) -> dict[str, Any]:
