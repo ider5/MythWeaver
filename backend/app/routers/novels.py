@@ -32,6 +32,7 @@ from app.schemas.novel import (
 from app.services import ingestion
 from app.services import scratch as scratch_svc
 from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.epub_export import build_epub
 from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
 from app.services.novel_role import (
@@ -177,10 +178,10 @@ async def export_novel(
     fmt: str = Query("txt", alias="format"),
     session: AsyncSession = Depends(get_session),
 ):
-    """导出小说当前章节正文为 txt / md 文件下载。"""
+    """导出小说当前章节正文为 txt / md / epub 文件下载。"""
     fmt = (fmt or "txt").lower().strip()
-    if fmt not in ("txt", "md"):
-        raise HTTPException(400, "format 仅支持 txt 或 md")
+    if fmt not in ("txt", "md", "epub"):
+        raise HTTPException(400, "format 仅支持 txt、md 或 epub")
 
     novel = await session.get(Novel, novel_id)
     if not novel:
@@ -193,6 +194,22 @@ async def export_novel(
             select(Chapter).where(Chapter.novel_id == novel_id).order_by(Chapter.index)
         )
     ).scalars().all()
+
+    if fmt == "epub":
+        payload = build_epub(
+            title=novel.title or "未命名",
+            author=getattr(novel, "author", None),
+            chapters=[
+                ((ch.title or "").strip() or f"第{ch.index}章", ch.content or "")
+                for ch in chapters
+            ],
+        )
+        filename = _safe_filename(novel.title, "epub")
+        return Response(
+            content=payload,
+            media_type="application/epub+zip",
+            headers={"Content-Disposition": _content_disposition(filename, "epub")},
+        )
 
     body = _build_export_text(list(chapters), fmt)
     filename = _safe_filename(novel.title, fmt)
