@@ -131,6 +131,38 @@ const willSegment = computed(() => Number(targetChars.value) > SEGMENT_HINT)
 
 const displayChars = computed(() => (streaming.value ? stream.length.value : content.value.length))
 
+const chapterIndex = computed(() => {
+  if (!selected.value || !outline.value) return null
+  return (outline.value.start_from_chapter || 1) + selected.value.order - 1
+})
+
+const doneCount = computed(
+  () => (outline.value?.items || []).filter((item) => item.status === 'done').length,
+)
+
+const hasBrief = computed(() => {
+  const item = selected.value
+  if (!item) return false
+  return Boolean(
+    item.purpose ||
+      item.conflict ||
+      item.suspense_hook ||
+      (item.characters || []).length ||
+      (item.key_points || []).length,
+  )
+})
+
+const committed = computed(
+  () => !revising.value && !reviseFailed.value && reviseProgress.value >= 100,
+)
+
+const writePhase = computed(() => {
+  if (revising.value || reviseFailed.value || committed.value) return 3
+  if (consistency.value || previewRevised.value || showNoReportHint.value) return 2
+  if (streaming.value || chapterId.value) return 1
+  return 0
+})
+
 function onTargetCharsInput() {
   targetTouched.value = true
 }
@@ -672,175 +704,220 @@ onUnmounted(() => {
       secondary-to="/import"
     />
   </div>
-  <div v-else class="grid lg:grid-cols-[16.5rem_minmax(0,1fr)] gap-6">
-    <aside class="panel p-2.5 space-y-0.5 max-h-[calc(100vh-7rem)] overflow-auto lg:sticky lg:top-[4.5rem]">
-      <div class="px-2 py-2 flex items-center justify-between">
-        <span class="meta">大纲条目</span>
-        <span v-if="outline?.items?.length" class="meta tabular">{{ outline.items.length }}</span>
+  <div v-else class="wb-write">
+    <aside class="wb-rail" aria-label="大纲条目">
+      <div class="wb-rail__head">
+        <span>章节</span>
+        <span v-if="outline?.items?.length" class="tabular">{{ doneCount }}/{{ outline.items.length }}</span>
       </div>
       <button
         v-for="item in outline?.items || []"
         :key="item.id"
-        class="rail-item cv-item"
-        :class="{ 'rail-item--active': selected?.id === item.id }"
+        type="button"
+        class="wb-rail__item"
+        :class="{ 'is-active': selected?.id === item.id }"
         :disabled="streaming || reviseBusy"
         @click="selectItem(item)"
       >
-        <div class="font-medium leading-snug">{{ item.order }}. {{ item.title }}</div>
-        <div class="mt-1">
-          <span
-            class="status-pill"
-            :class="item.status === 'done' ? 'status-pill--ok' : item.status === 'generating' ? 'status-pill--busy' : 'status-pill--idle'"
-          >
-            {{ itemStatusLabel(item.status) }}
-          </span>
-        </div>
+        <span class="wb-rail__ord tabular">{{ item.order }}</span>
+        <span class="wb-rail__name">{{ item.title }}</span>
+        <span class="wb-rail__state" :data-status="item.status">{{ itemStatusLabel(item.status) }}</span>
       </button>
-      <p v-if="!outline" class="px-2 py-3 empty">请先在大纲页生成并确认。</p>
+      <p v-if="!outline" class="wb-rail__empty">请先在大纲页生成并确认。</p>
     </aside>
 
-    <section class="space-y-4 min-w-0">
-      <div class="panel toolbar toolbar--split">
-        <div class="toolbar__actions">
-          <button class="btn" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
-            {{ streaming ? '生成中…' : error ? '重试生成' : '流式生成' }}
-          </button>
-          <button
-            class="btn-ghost"
-            :disabled="!chapterId || streaming || reviseBusy"
-            @click="reviseFailed ? retryCommitKnowledge() : saveRevise()"
-          >
-            {{ revising ? '入库中…' : reviseFailed ? '重试入库' : '保存修订并入库' }}
-          </button>
-          <button
-            class="btn-danger btn-sm"
-            :disabled="!chapterId || activeVersionId == null || streaming || deleting || deletingChapter || reviseBusy"
-            @click="deleteCurrentVersion"
-          >
-            {{ deleting ? '删除中…' : '删除当前版本' }}
-          </button>
-          <button
-            class="btn-danger btn-sm"
-            :disabled="!chapterId || streaming || deleting || deletingChapter || reviseBusy"
-            @click="deleteWholeChapter"
-            title="危险：清除整章及全部版本"
-          >
-            {{ deletingChapter ? '删除中…' : '删除整章及全部版本' }}
-          </button>
-        </div>
-        <span class="text-sm tabular meta">
-          {{ status }}
-          <span v-if="displayChars" class="ml-2">{{ displayChars }} 字</span>
-        </span>
-      </div>
+    <section class="wb-stage">
+      <ol class="wb-steps" aria-label="续写流程">
+        <li :class="{ 'is-current': writePhase === 0, 'is-done': writePhase > 0 }">选章</li>
+        <li :class="{ 'is-current': writePhase === 1, 'is-done': writePhase > 1 }">成稿</li>
+        <li :class="{ 'is-current': writePhase === 2, 'is-done': writePhase > 2 }">审阅</li>
+        <li :class="{ 'is-current': writePhase === 3 && !committed, 'is-done': committed }">入库</li>
+      </ol>
 
-      <div v-if="revising || reviseFailed || reviseProgress > 0" class="panel p-5">
-        <div class="text-sm mb-2 font-medium">入库进度</div>
-        <ProgressBar :value="reviseProgress" :failed="reviseFailed" />
-        <div class="text-sm mt-2 tabular">
-          {{ Math.round(reviseProgress) }}%
-          <span class="meta"> · {{ reviseFailed ? '失败' : revising ? '进行中' : '完成' }} </span>
-        </div>
-        <div class="meta mt-1">{{ reviseMessage }}</div>
-        <p v-if="reviseError" class="alert alert--danger mt-3">{{ reviseError }}</p>
-        <p class="meta mt-2">摘要 → 实体抽取 → 向量化 → 记忆更新</p>
-      </div>
-
-      <div class="panel p-5 grid gap-4 sm:grid-cols-2">
-        <div class="flex flex-wrap gap-4 items-end">
-          <div>
-            <label class="label">本章目标字数</label>
-            <input
-              v-model.number="targetChars"
-              type="number"
-              min="1500"
-              max="30000"
-              step="100"
-              class="input w-32"
-              :disabled="streaming || reviseBusy"
-              @input="onTargetCharsInput"
-            />
-          </div>
-          <p class="meta flex-1 min-w-[180px]">
-            原作均长
-            <span v-if="originalAvgChars">约 {{ originalAvgChars }} 字</span>
-            <span v-else>尚未统计（导入原作并入库后自动计算）</span>
-            · 本章目标约 {{ targetChars || '—' }} 字
-            <span v-if="willSegment">；长章将按大纲要点分段流式生成。</span>
+      <header class="wb-stage__head">
+        <div class="min-w-0">
+          <p v-if="selected" class="wb-kicker">
+            <span v-if="chapterIndex">第 {{ chapterIndex }} 章</span>
+            <span aria-hidden="true"> · </span>
+            {{ itemStatusLabel(selected.status) }}
           </p>
+          <h2 class="wb-title">{{ selected?.title || '选择一章开始' }}</h2>
+          <p v-if="selected?.summary" class="wb-lede">{{ selected.summary }}</p>
         </div>
-        <div class="flex flex-wrap gap-4 items-end">
-          <label class="check">
-            <input v-model="runCritic" type="checkbox" :disabled="streaming || reviseBusy" />
-            启用一致性检验
-          </label>
-          <div v-if="runCritic">
-            <label class="label">Critic 轮数</label>
-            <select
-              v-model.number="maxCriticRounds"
-              class="input w-28"
-              :disabled="streaming || reviseBusy || willSegment"
+        <p class="wb-count tabular">
+          <strong>{{ displayChars || 0 }}</strong>
+          <span>字</span>
+          <span v-if="status" class="wb-count__status">{{ status }}</span>
+        </p>
+      </header>
+
+      <div class="wb-actions">
+        <button class="btn" type="button" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
+          {{ streaming ? '生成中…' : error ? '重试生成' : '流式生成' }}
+        </button>
+        <button
+          class="btn-ghost"
+          type="button"
+          :disabled="!chapterId || streaming || reviseBusy"
+          @click="reviseFailed ? retryCommitKnowledge() : saveRevise()"
+        >
+          {{ revising ? '入库中…' : reviseFailed ? '重试入库' : '保存修订并入库' }}
+        </button>
+        <details class="wb-more">
+          <summary class="wb-more__sum">删除</summary>
+          <div class="wb-more__panel">
+            <button
+              class="btn-danger btn-sm"
+              type="button"
+              :disabled="!chapterId || activeVersionId == null || streaming || deleting || deletingChapter || reviseBusy"
+              @click="deleteCurrentVersion"
             >
-              <option :value="0">0（仅审查）</option>
-              <option :value="1">1</option>
-              <option :value="2">2</option>
-            </select>
+              {{ deleting ? '删除中…' : '删除当前版本' }}
+            </button>
+            <button
+              class="btn-danger btn-sm"
+              type="button"
+              :disabled="!chapterId || streaming || deleting || deletingChapter || reviseBusy"
+              title="危险：清除整章及全部版本"
+              @click="deleteWholeChapter"
+            >
+              {{ deletingChapter ? '删除中…' : '删除整章及全部版本' }}
+            </button>
           </div>
-          <p class="meta flex-1 min-w-[160px]">
-            <template v-if="willSegment">
-              长章仅审查、不整章重写。分段进度会显示「正在撰写第 i/n 段…」。
-            </template>
-            <template v-else> 关闭可加快生成；Critic 会整章重写，较慢。刷新后会自动回载已生成章节。 </template>
-          </p>
+        </details>
+      </div>
+
+      <div class="wb-tune">
+        <div>
+          <label class="label" for="write-target-chars">本章目标字数</label>
+          <input
+            id="write-target-chars"
+            v-model.number="targetChars"
+            type="number"
+            min="1500"
+            max="30000"
+            step="100"
+            class="input wb-tune__num"
+            :disabled="streaming || reviseBusy"
+            @input="onTargetCharsInput"
+          />
         </div>
+        <p class="meta wb-tune__note">
+          原作均长
+          <span v-if="originalAvgChars">约 {{ originalAvgChars }} 字</span>
+          <span v-else>尚未统计</span>
+          <span v-if="willSegment"> · 长章按要点分段，只审查不整章重写</span>
+        </p>
+        <label class="check">
+          <input v-model="runCritic" type="checkbox" :disabled="streaming || reviseBusy" />
+          一致性检验
+        </label>
+        <div v-if="runCritic">
+          <label class="label" for="write-critic-rounds">Critic 轮数</label>
+          <select
+            id="write-critic-rounds"
+            v-model.number="maxCriticRounds"
+            class="input wb-tune__rounds"
+            :disabled="streaming || reviseBusy || willSegment"
+          >
+            <option :value="0">0（仅审查）</option>
+            <option :value="1">1</option>
+            <option :value="2">2</option>
+          </select>
+        </div>
+      </div>
+
+      <div v-if="revising || reviseFailed || reviseProgress > 0" class="wb-progress">
+        <div class="wb-progress__row">
+          <span>入库 · 摘要、抽取、向量、记忆</span>
+          <span class="tabular">
+            {{ Math.round(reviseProgress) }}%
+            {{ reviseFailed ? '失败' : revising ? '进行中' : '完成' }}
+          </span>
+        </div>
+        <ProgressBar :value="reviseProgress" :failed="reviseFailed" />
+        <p v-if="reviseMessage" class="meta">{{ reviseMessage }}</p>
+        <p v-if="reviseError" class="alert alert--danger">{{ reviseError }}</p>
       </div>
 
       <p v-if="error" class="alert alert--danger">{{ error }}</p>
 
-      <div v-if="selected" class="panel p-5 text-sm">
-        <div class="font-medium">{{ selected.title }}</div>
-        <div class="mt-1" style="color: var(--ink-muted)">{{ selected.summary }}</div>
-        <p v-if="selected.purpose" class="mt-1 meta">目标：{{ selected.purpose }}</p>
-        <p v-if="selected.conflict" class="mt-1 meta">冲突：{{ selected.conflict }}</p>
-        <p v-if="selected.suspense_hook" class="mt-1 meta">悬念：{{ selected.suspense_hook }}</p>
-        <p v-if="(selected.characters || []).length" class="mt-1 meta">
-          出场：{{ (selected.characters || []).join('、') }}
-        </p>
-        <ul v-if="(selected.key_points || []).length" class="mt-2 list-disc pl-5 meta space-y-0.5">
-          <li v-for="(p, i) in selected.key_points || []" :key="i">{{ p }}</li>
-        </ul>
-      </div>
+      <details v-if="selected && hasBrief" class="wb-brief">
+        <summary>本章要点</summary>
+        <dl>
+          <div v-if="selected.purpose">
+            <dt>目标</dt>
+            <dd>{{ selected.purpose }}</dd>
+          </div>
+          <div v-if="selected.conflict">
+            <dt>冲突</dt>
+            <dd>{{ selected.conflict }}</dd>
+          </div>
+          <div v-if="selected.suspense_hook">
+            <dt>悬念</dt>
+            <dd>{{ selected.suspense_hook }}</dd>
+          </div>
+          <div v-if="(selected.characters || []).length">
+            <dt>出场</dt>
+            <dd>{{ (selected.characters || []).join('、') }}</dd>
+          </div>
+          <div v-if="(selected.key_points || []).length">
+            <dt>要点</dt>
+            <dd>
+              <ol>
+                <li v-for="(point, i) in selected.key_points || []" :key="i">{{ point }}</li>
+              </ol>
+            </dd>
+          </div>
+        </dl>
+      </details>
 
-      <div class="editor-frame">
+      <div class="editor-frame wb-manuscript" :class="{ 'is-live': streaming }">
         <div class="editor-chrome">
-          <span class="text-sm font-medium truncate">{{ selected?.title || '正文' }}</span>
+          <span class="wb-manuscript__label">正文</span>
+          <div v-if="versions.length" class="wb-versions" role="group" aria-label="版本">
+            <button
+              v-for="v in versions"
+              :key="v.id"
+              type="button"
+              class="wb-version"
+              :class="{ 'is-active': activeVersionId === v.id }"
+              :aria-pressed="activeVersionId === v.id"
+              :disabled="reviseBusy"
+              @click="loadVersion(v)"
+            >
+              {{ versionLabel(v.version_type) }}
+            </button>
+          </div>
           <span class="meta tabular">{{ displayChars ? `${displayChars} 字` : '空白稿纸' }}</span>
         </div>
-        <div
-          v-show="streaming"
-          ref="streamEl"
-          class="prose-body"
-          aria-live="polite"
-          aria-busy="true"
-        />
-        <textarea
-          v-show="!streaming"
-          v-model="content"
-          class="prose-edit"
-          placeholder="生成内容将在此出现，可直接修订…"
-          :disabled="reviseBusy"
-        />
+        <div :key="selected?.id ?? 0" class="wb-manuscript__body">
+          <div
+            v-show="streaming"
+            ref="streamEl"
+            class="prose-body"
+            aria-live="polite"
+            aria-busy="true"
+          />
+          <textarea
+            v-show="!streaming"
+            v-model="content"
+            class="prose-edit"
+            placeholder="生成内容将在此出现，可直接修订…"
+            :disabled="reviseBusy"
+          />
+        </div>
       </div>
 
-      <div v-if="consistency" class="panel p-5 space-y-3">
-        <div class="font-medium flex flex-wrap items-baseline gap-2">
-          一致性报告
+      <section v-if="consistency" class="wb-critic" aria-label="一致性审阅">
+        <div class="wb-critic__head">
+          <h3>审阅</h3>
           <span class="badge" :class="consistency.ok ? 'badge--ok' : 'badge--danger'">
             {{ consistency.ok ? '通过' : '有问题' }}
           </span>
-          <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮</span>
+          <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮 · 勾选后预览，确认才写入</span>
         </div>
-        <div v-if="issueRows.length" class="flex flex-wrap gap-2 text-sm">
+        <div v-if="issueRows.length" class="wb-critic__tools">
           <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="selectAllIssues">
             全选
           </button>
@@ -853,16 +930,16 @@ onUnmounted(() => {
             :disabled="reviseBusy || !selectedIssueCount || !chapterId"
             @click="previewSelectedRevise"
           >
-            {{ previewBusy ? '预览中…' : `按勾选修稿（${selectedIssueCount}）` }}
+            {{ previewBusy ? '预览中…' : `预览修稿（${selectedIssueCount}）` }}
           </button>
         </div>
-        <ul class="space-y-1.5 text-sm">
-          <li v-for="row in issueRows" :key="row.key" class="flex gap-2 items-start">
+        <ul class="wb-issues">
+          <li v-for="row in issueRows" :key="row.key">
             <input
               type="checkbox"
-              class="mt-1"
               :checked="selectedIssueKeys.has(row.key)"
               :disabled="reviseBusy"
+              :aria-label="`${severityLabel(row.iss.severity)} ${row.iss.type}`"
               @change="toggleIssue(row.key, ($event.target as HTMLInputElement).checked)"
             />
             <span :class="severityClass(row.iss.severity)" :title="row.iss.severity">{{
@@ -876,46 +953,30 @@ onUnmounted(() => {
           <li v-if="!issueRows.length" class="empty">无问题</li>
         </ul>
         <p v-if="previewError" class="alert alert--danger">{{ previewError }}</p>
-        <div v-if="previewRevised" class="grid gap-3 sm:grid-cols-2">
+        <div v-if="previewRevised" class="wb-diff">
           <div>
-            <div class="meta mb-1">修稿前</div>
-            <pre class="prose-edit text-xs whitespace-pre-wrap max-h-48 overflow-auto">{{ previewBase }}</pre>
+            <div class="wb-diff__label">修稿前</div>
+            <pre class="wb-diff__text">{{ previewBase }}</pre>
           </div>
-          <div>
-            <div class="meta mb-1">修稿后</div>
-            <pre class="prose-edit text-xs whitespace-pre-wrap max-h-48 overflow-auto">{{ previewRevised }}</pre>
+          <div class="wb-diff__col--next">
+            <div class="wb-diff__label">修稿后</div>
+            <pre class="wb-diff__text">{{ previewRevised }}</pre>
           </div>
-          <div class="sm:col-span-2 flex flex-wrap gap-2">
+          <div class="wb-diff__actions">
             <button type="button" class="btn" :disabled="reviseBusy" @click="confirmSelectedRevise">
               {{ confirmBusy ? '写入中…' : '确认采用修稿' }}
             </button>
             <button type="button" class="btn-ghost" :disabled="reviseBusy" @click="clearPreview">放弃预览</button>
           </div>
         </div>
-      </div>
-      <div v-else-if="showNoReportHint" class="panel p-5">
-        <div class="font-medium mb-1">一致性报告</div>
-        <p class="empty">该版本无一致性报告</p>
-        <p class="meta mt-1">
-          常见原因：生成时关闭了一致性检验；或为更早的草稿（报告在后续 Critic 修订版上）。
-        </p>
-      </div>
-
-      <div v-if="versions.length" class="panel p-5">
-        <div class="text-sm mb-2 font-medium">版本链</div>
-        <div class="flex flex-wrap gap-1.5">
-          <button
-            v-for="v in versions"
-            :key="v.id"
-            class="chip"
-            :class="{ 'chip--active': activeVersionId === v.id }"
-            :disabled="reviseBusy"
-            @click="loadVersion(v)"
-          >
-            #{{ v.id }} {{ versionLabel(v.version_type) }}
-          </button>
+      </section>
+      <section v-else-if="showNoReportHint" class="wb-critic" aria-label="一致性审阅">
+        <div class="wb-critic__head">
+          <h3>审阅</h3>
         </div>
-      </div>
+        <p class="empty">该版本无一致性报告</p>
+        <p class="meta">生成时关闭了检验，或报告在后续 Critic 修订版上。</p>
+      </section>
     </section>
   </div>
 </template>

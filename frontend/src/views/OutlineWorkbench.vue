@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { outlineApi, tasksApi, type Outline, type OutlineItem } from '@/api'
 import BatchGeneratePanel from '@/components/BatchGeneratePanel.vue'
@@ -33,6 +33,18 @@ function itemStatusLabel(s: string) {
   if (s === 'generating') return '生成中'
   if (s === 'pending') return '待写'
   return s
+}
+
+const outlinePhase = computed(() => {
+  if (!current.value) return 'plan'
+  if (current.value.status === 'confirmed') return 'batch'
+  return 'edit'
+})
+
+function pickOutline(event: Event) {
+  const id = Number((event.target as HTMLSelectElement).value)
+  const next = outlines.value.find((outline) => outline.id === id)
+  if (next) current.value = next
 }
 
 async function load(preferId?: number | null) {
@@ -225,23 +237,31 @@ onUnmounted(() => closeGenerateEs())
 </script>
 
 <template>
-  <div class="space-y-5">
-    <div class="panel toolbar toolbar--split">
-      <div class="toolbar__fields">
+  <div class="wb-outline">
+    <ol class="wb-steps" aria-label="大纲流程">
+      <li :class="{ 'is-current': outlinePhase === 'plan', 'is-done': outlinePhase !== 'plan' }">规划</li>
+      <li :class="{ 'is-current': outlinePhase === 'edit', 'is-done': outlinePhase === 'batch' }">校对确认</li>
+      <li :class="{ 'is-current': outlinePhase === 'batch' }">连写</li>
+    </ol>
+
+    <div class="wb-plan">
+      <div class="wb-plan__fields">
         <div>
-          <label class="label">规划章数</label>
+          <label class="label" for="outline-count">规划章数</label>
           <input
+            id="outline-count"
             v-model.number="chapterCount"
             type="number"
             min="1"
             max="30"
-            class="input w-24"
+            class="input wb-tune__num"
             :disabled="generating || batching"
           />
         </div>
-        <div class="flex-1 min-w-[200px]">
-          <label class="label">指导语（可选）</label>
+        <div class="wb-plan__guidance">
+          <label class="label" for="outline-guidance">指导语（可选）</label>
           <input
+            id="outline-guidance"
             v-model="guidance"
             class="input"
             placeholder="例如：先打小怪再揭秘身世"
@@ -249,130 +269,141 @@ onUnmounted(() => closeGenerateEs())
           />
         </div>
       </div>
-      <div class="toolbar__actions">
-        <button class="btn" :disabled="busy || generating || batching" @click="generate">
-          {{ generating ? '生成中…' : '生成大纲' }}
-        </button>
-        <button class="btn-ghost" :disabled="!current || busy || generating || batching" @click="save">
-          保存编辑
-        </button>
-        <button class="btn-ghost" :disabled="!current || busy || generating || batching" @click="confirm">
-          确认大纲
-        </button>
-        <button
-          class="btn-danger"
-          :disabled="!current || busy || generating || batching"
-          @click="current && removeOutline(current)"
-        >
-          删除当前大纲
-        </button>
-      </div>
+      <button class="btn" type="button" :disabled="busy || generating || batching" @click="generate">
+        {{ generating ? '生成中…' : '生成大纲' }}
+      </button>
     </div>
 
-    <div v-if="generating || generateFailed || generateProgress > 0" class="panel p-5">
-      <div class="text-sm mb-2 font-medium">大纲生成进度</div>
-      <ProgressBar :value="generateProgress" :failed="generateFailed" />
-      <div class="text-sm mt-2 tabular">
-        {{ Math.round(generateProgress) }}%
-        <span class="meta"> · {{ generateFailed ? '失败' : generating ? '进行中' : '完成' }} </span>
+    <div v-if="generating || generateFailed || generateProgress > 0" class="wb-progress">
+      <div class="wb-progress__row">
+        <span>大纲生成 · 上下文、模型、校正章号、落库</span>
+        <span class="tabular">
+          {{ Math.round(generateProgress) }}%
+          {{ generateFailed ? '失败' : generating ? '进行中' : '完成' }}
+        </span>
       </div>
-      <div class="meta mt-1">{{ generateMessage }}</div>
-      <p v-if="generateError" class="alert alert--danger mt-3">
-        {{ generateError }}
-      </p>
-      <p class="meta mt-2">准备上下文 → 调用模型生成 → 解析校正章号 → 落库</p>
-      <button v-if="generateFailed" class="btn mt-3" :disabled="busy || generating || batching" @click="generate">
+      <ProgressBar :value="generateProgress" :failed="generateFailed" />
+      <p v-if="generateMessage" class="meta">{{ generateMessage }}</p>
+      <p v-if="generateError" class="alert alert--danger">{{ generateError }}</p>
+      <button
+        v-if="generateFailed"
+        class="btn btn-sm"
+        type="button"
+        :disabled="busy || generating || batching"
+        @click="generate"
+      >
         重试
       </button>
     </div>
 
-    <BatchGeneratePanel
-      :novel-id="novelId"
-      :outline="current"
-      :disabled="generating || busy"
-      @running="batching = $event"
-      @finished="load(current?.id ?? null)"
-    />
-
-    <p class="meta">
-      草稿与已确认大纲均可删除；已生成章节正文会保留并解绑。未点「保存编辑」的本地修改刷新后会丢失。
-    </p>
     <p v-if="error && !generateFailed" class="alert alert--danger">{{ error }}</p>
     <p v-if="info" class="alert alert--ok">{{ info }}</p>
 
-    <div v-if="outlines.length" class="flex gap-2 text-sm flex-wrap items-center">
-      <div v-for="o in outlines" :key="o.id" class="flex items-center gap-1">
-        <button
-          class="chip"
-          :class="{ 'chip--active': current?.id === o.id }"
-          @click="current = o"
-        >
-          #{{ o.id }} {{ o.title }}
-          <span class="ml-1 opacity-70">{{ o.status === 'confirmed' ? '已确认' : '草稿' }}</span>
-        </button>
-        <button
-          class="btn-danger btn-sm"
-          :disabled="busy || generating || batching"
-          title="删除此大纲"
-          @click="removeOutline(o)"
-        >
-          删除
-        </button>
-      </div>
-    </div>
+    <div class="wb-outline__layout">
+      <section class="wb-sheet" aria-label="大纲蓝图">
+        <header v-if="current" class="wb-sheet__head">
+          <div class="min-w-0">
+            <label v-if="outlines.length > 1" class="wb-switch">
+              <span class="label">切换大纲</span>
+              <select
+                class="input"
+                :value="current.id"
+                :disabled="generating || batching || busy"
+                @change="pickOutline"
+              >
+                <option v-for="outline in outlines" :key="outline.id" :value="outline.id">
+                  {{ outline.title }} · {{ outline.status === 'confirmed' ? '已确认' : '草稿' }}
+                </option>
+              </select>
+            </label>
+            <h2 class="wb-title">{{ current.title }}</h2>
+            <p class="wb-lede">
+              {{ current.status === 'confirmed' ? '已确认，可以连写' : '草稿，改完后确认' }}
+              · 从第 {{ current.start_from_chapter }} 章起
+              · {{ current.items.length }} 条
+            </p>
+          </div>
+          <div class="wb-actions">
+            <button
+              type="button"
+              :class="current.status === 'confirmed' ? 'btn-ghost' : 'btn'"
+              :disabled="busy || generating || batching"
+              @click="confirm"
+            >
+              确认大纲
+            </button>
+            <button class="btn-ghost" type="button" :disabled="busy || generating || batching" @click="save">
+              保存编辑
+            </button>
+            <button
+              class="btn-danger btn-sm"
+              type="button"
+              :disabled="busy || generating || batching"
+              @click="removeOutline(current)"
+            >
+              删除
+            </button>
+          </div>
+        </header>
+        <p v-if="current" class="wb-note">
+          未点保存的修改刷新后会丢失。删除大纲会保留已生成正文，并解除关联。
+        </p>
 
-    <div v-if="current" class="space-y-3">
-      <div class="meta">
-        {{ current.title }} · {{ current.status === 'confirmed' ? '已确认' : '草稿' }} · 从第
-        {{ current.start_from_chapter }} 章起
-      </div>
-      <div v-for="item in current.items" :key="item.id || item.order" class="panel cv-card p-5 space-y-3">
-        <div class="flex gap-3 items-center">
-          <span class="chapter-index shrink-0">第{{ current.start_from_chapter + item.order - 1 }}章</span>
-          <input v-model="item.title" class="input" @change="updateItem(item, 'title', item.title)" />
+        <ol v-if="current" class="wb-beats">
+          <li v-for="item in current.items" :key="item.id || item.order" class="wb-beat">
+            <div class="wb-beat__top">
+              <span class="chapter-index">第{{ current.start_from_chapter + item.order - 1 }}章</span>
+              <input
+                v-model="item.title"
+                class="input wb-beat__title"
+                :aria-label="`第${current.start_from_chapter + item.order - 1}章标题`"
+                @change="updateItem(item, 'title', item.title)"
+              />
+              <span class="wb-state" :data-status="item.status">{{ itemStatusLabel(item.status) }}</span>
+            </div>
+            <label class="label">梗概</label>
+            <textarea v-model="item.summary" class="textarea textarea-sm" rows="2" />
+            <div class="wb-beat__grid">
+              <div>
+                <label class="label">主角小目标</label>
+                <textarea v-model="item.purpose" class="textarea textarea-sm" rows="2" />
+              </div>
+              <div>
+                <label class="label">冲突与转折</label>
+                <textarea v-model="item.conflict" class="textarea textarea-sm" rows="2" />
+              </div>
+            </div>
+            <label class="label">悬念钩子</label>
+            <textarea v-model="item.suspense_hook" class="textarea textarea-sm" rows="2" />
+            <label class="label">出场人物</label>
+            <input
+              class="input"
+              :value="(item.characters || []).join('；')"
+              placeholder="用；分隔"
+              @change="item.characters = ($event.target as HTMLInputElement).value.split(/[；;、,，]/).map(s=>s.trim()).filter(Boolean)"
+            />
+            <label class="label">要点</label>
+            <input
+              class="input"
+              :value="(item.key_points || []).join('；')"
+              placeholder="用；分隔"
+              @change="item.key_points = ($event.target as HTMLInputElement).value.split(/[；;]/).map(s=>s.trim()).filter(Boolean)"
+            />
+          </li>
+        </ol>
+        <div v-else class="empty-state">
+          <p class="empty">尚未生成大纲。填好章数后生成第一份蓝图。</p>
         </div>
-        <textarea v-model="item.summary" class="textarea textarea-sm" rows="3" />
-        <div class="grid gap-3 md:grid-cols-2">
-          <div>
-            <label class="label">主角小目标</label>
-            <textarea v-model="item.purpose" class="textarea textarea-sm" rows="2" />
-          </div>
-          <div>
-            <label class="label">冲突与转折</label>
-            <textarea v-model="item.conflict" class="textarea textarea-sm" rows="2" />
-          </div>
-        </div>
-        <div>
-          <label class="label">悬念钩子</label>
-          <textarea v-model="item.suspense_hook" class="textarea textarea-sm" rows="2" />
-        </div>
-        <div>
-          <label class="label">出场人物</label>
-          <input
-            class="input"
-            :value="(item.characters || []).join('；')"
-            placeholder="出场人物，用；分隔"
-            @change="item.characters = ($event.target as HTMLInputElement).value.split(/[；;、,，]/).map(s=>s.trim()).filter(Boolean)"
-          />
-        </div>
-        <input
-          class="input"
-          :value="(item.key_points || []).join('；')"
-          placeholder="要点，用；分隔"
-          @change="item.key_points = ($event.target as HTMLInputElement).value.split(/[；;]/).map(s=>s.trim()).filter(Boolean)"
-        />
-        <div>
-          <span
-            class="status-pill"
-            :class="item.status === 'done' ? 'status-pill--ok' : item.status === 'generating' ? 'status-pill--busy' : 'status-pill--idle'"
-          >
-            {{ itemStatusLabel(item.status) }}
-          </span>
-        </div>
-      </div>
-    </div>
-    <div v-else class="empty-state">
-      <p class="empty">尚未生成大纲。</p>
+      </section>
+
+      <BatchGeneratePanel
+        class="wb-director"
+        :novel-id="novelId"
+        :outline="current"
+        :disabled="generating || busy"
+        @running="batching = $event"
+        @finished="load(current?.id ?? null)"
+      />
     </div>
   </div>
 </template>
