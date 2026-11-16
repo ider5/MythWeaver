@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { providersApi, type ProviderPreset } from '@/api'
+import { configApi, providersApi, type ProviderPreset } from '@/api'
 
 const presets = ref<ProviderPreset[]>([])
 const loading = ref(true)
@@ -16,6 +16,9 @@ const result = ref<{
   reply?: string | null
 } | null>(null)
 const loadError = ref('')
+const stageRoutes = ref<
+  Array<{ stage: string; label: string; provider: string; model: string; purposes: string[] }>
+>([])
 
 const current = computed(() => presets.value.find((p) => p.id === vendorId.value))
 
@@ -32,8 +35,9 @@ watch(vendorId, (id) => {
 
 onMounted(async () => {
   try {
-    const res = await providersApi.list()
+    const [res, cfg] = await Promise.all([providersApi.list(), configApi.get()])
     presets.value = res.data.presets || []
+    stageRoutes.value = cfg.data?.stage_routes || []
     if (!presets.value.some((p) => p.id === vendorId.value) && presets.value[0]) {
       vendorId.value = presets.value[0].id
     }
@@ -149,5 +153,20 @@ async function runTest() {
         </template>
       </div>
     </form>
+
+    <div v-if="stageRoutes.length" class="panel p-5 space-y-3">
+      <div>
+        <div class="font-medium">当前阶段路由</div>
+        <p class="mt-1 text-sm text-[var(--ink-muted)]">
+          摘要 / Critic 走 summary_*，大纲与续写走 generation_*，向量走 embedding_*（.env）。
+        </p>
+      </div>
+      <ul class="text-sm space-y-2">
+        <li v-for="r in stageRoutes" :key="r.stage" class="purpose-row">
+          <span>{{ r.label }}</span>
+          <span class="tabular meta">{{ r.provider }} / {{ r.model }}</span>
+        </li>
+      </ul>
+    </div>
   </div>
 </template>

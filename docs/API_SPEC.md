@@ -8,7 +8,7 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 ## 配置
 
-- `GET /api/config` → 模型与密钥是否配置（不返回明文 key）
+- `GET /api/config` → 模型与密钥是否配置（不返回明文 key）；含 `stage_routes`（阶段→provider/model/用途）
 
 ## LLM 厂商预设
 
@@ -89,7 +89,7 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 - `POST /api/tasks/{tid}/cancel` 取消排队中或执行中的任务。已结束返回 409；重复取消返回当前任务
 - `POST /api/tasks/{tid}/retry` 重试可恢复任务。入库会重新调用入库；返回新任务
 - `GET /api/tasks/{tid}/events` SSE 进度（终态含 completed / failed / cancelled）
-- `GET /api/costs?novel_id=`
+- `GET /api/costs?novel_id=` → 汇总成本；含 `by_purpose` 与 `by_purpose_tokens`（各用途 in/out/cost）
 
 ## 一致性报告结构
 

@@ -13,7 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_session
 from app.models import AsyncTask, CostLog
-from app.schemas.tasks import ConfigOut, CostSummaryOut, TaskOut
+from app.schemas.tasks import (
+    ConfigOut,
+    CostSummaryOut,
+    PurposeTokenOut,
+    StageRouteOut,
+    TaskOut,
+)
 from app.services.tasks import TaskNotFound, TaskStateError, get_task_queue
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -112,13 +118,24 @@ async def cost_summary(novel_id: int | None = None, session: AsyncSession = Depe
     purpose_rows = (
         await session.execute(
             _scoped(
-                select(CostLog.purpose, func.coalesce(func.sum(CostLog.cost_usd), 0.0)).group_by(
-                    CostLog.purpose
-                )
+                select(
+                    CostLog.purpose,
+                    func.coalesce(func.sum(CostLog.cost_usd), 0.0),
+                    func.coalesce(func.sum(CostLog.input_tokens), 0),
+                    func.coalesce(func.sum(CostLog.output_tokens), 0),
+                ).group_by(CostLog.purpose)
             )
         )
     ).all()
-    by_purpose = {str(purpose): float(cost or 0.0) for purpose, cost in purpose_rows}
+    by_purpose = {str(purpose): float(cost or 0.0) for purpose, cost, _in, _out in purpose_rows}
+    by_purpose_tokens = {
+        str(purpose): PurposeTokenOut(
+            input_tokens=int(in_tok or 0),
+            output_tokens=int(out_tok or 0),
+            cost_usd=round(float(cost or 0.0), 6),
+        )
+        for purpose, cost, in_tok, out_tok in purpose_rows
+    }
 
     recent_stmt = _scoped(select(CostLog)).order_by(CostLog.id.desc()).limit(30)
     rows = (await session.execute(recent_stmt)).scalars().all()
@@ -139,8 +156,42 @@ async def cost_summary(novel_id: int | None = None, session: AsyncSession = Depe
         total_input_tokens=int(total_in or 0),
         total_output_tokens=int(total_out or 0),
         by_purpose=by_purpose,
+        by_purpose_tokens=by_purpose_tokens,
         recent=recent,
     )
+
+
+def _stage_routes(s) -> list[StageRouteOut]:
+    return [
+        StageRouteOut(
+            stage="summary",
+            label="摘要 / 抽取",
+            provider=s.summary_provider,
+            model=s.summary_model,
+            purposes=["summary", "extract", "memory", "style"],
+        ),
+        StageRouteOut(
+            stage="generation",
+            label="大纲 / 续写",
+            provider=s.generation_provider,
+            model=s.generation_model,
+            purposes=["outline", "generation"],
+        ),
+        StageRouteOut(
+            stage="critic",
+            label="审校 Critic",
+            provider=s.summary_provider,
+            model=s.summary_model,
+            purposes=["critic", "consistency"],
+        ),
+        StageRouteOut(
+            stage="embedding",
+            label="向量化",
+            provider="openai",
+            model=s.embedding_model,
+            purposes=["embed"],
+        ),
+    ]
 
 
 @router.get("/config", response_model=ConfigOut)
@@ -161,4 +212,5 @@ async def get_config():
             s.generation_api_key and not s.generation_api_key.startswith("sk-your")
         ),
         has_embedding_key=bool(s.embedding_api_key and not s.embedding_api_key.startswith("sk-your")),
+        stage_routes=_stage_routes(s),
     )
