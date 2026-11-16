@@ -72,6 +72,20 @@ VENDOR_PRESETS: list[dict[str, Any]] = [
         "notes": "本地 OpenAI 兼容；Key 可填 ollama。",
     },
     {
+        "id": "ovh",
+        "label": "OVH AI Endpoints (免费匿名)",
+        "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+        "default_model": "Mistral-Small-3.2-24B-Instruct-2506",
+        "models": [
+            "Mistral-Small-3.2-24B-Instruct-2506",
+            "Meta-Llama-3_3-70B-Instruct",
+            "Qwen3.5-9B",
+            "gpt-oss-20b",
+        ],
+        "docs_url": "https://endpoints.ai.cloud.ovh.net/",
+        "notes": "匿名免费档（限速）；Key 填 anonymous，勿传真实 Bearer。向量可用 bge-m3。",
+    },
+    {
         "id": "custom",
         "label": "自定义 OpenAI 兼容",
         "base_url": "",
@@ -118,12 +132,30 @@ async def test_connection(
     model: str,
 ) -> dict[str, Any]:
     """对 OpenAI 兼容端点发起最小 chat 探测；不持久化密钥。"""
+    import time
+
+    import httpx
+
     key = (api_key or "").strip()
     if not key:
         return {"ok": False, "error": "api_key 不能为空", "latency_ms": None, "reply": None}
 
-    client = AsyncOpenAI(api_key=key, base_url=base_url.rstrip("/"), timeout=30.0)
-    import time
+    anon = key.lower() in ("anonymous", "none", "no-key", "nokey")
+    if anon:
+
+        class _StripAuth(httpx.Auth):
+            def auth_flow(self, request: httpx.Request):
+                request.headers.pop("Authorization", None)
+                yield request
+
+        client = AsyncOpenAI(
+            api_key="anonymous",
+            base_url=base_url.rstrip("/"),
+            timeout=30.0,
+            http_client=httpx.AsyncClient(auth=_StripAuth(), timeout=30.0),
+        )
+    else:
+        client = AsyncOpenAI(api_key=key, base_url=base_url.rstrip("/"), timeout=30.0)
 
     t0 = time.perf_counter()
     try:

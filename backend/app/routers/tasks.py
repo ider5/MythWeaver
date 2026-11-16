@@ -25,6 +25,14 @@ from app.services.tasks import TaskNotFound, TaskStateError, get_task_queue
 router = APIRouter(prefix="/api", tags=["tasks"])
 
 
+def _key_configured(api_key: str | None) -> bool:
+    """占位 sk-your-* 视为未配置；anonymous/none 等免费匿名档视为已配置。"""
+    key = (api_key or "").strip()
+    if not key or key.startswith("sk-your"):
+        return False
+    return True
+
+
 @router.get("/tasks", response_model=list[TaskOut])
 async def list_tasks(
     novel_id: int | None = None,
@@ -207,10 +215,8 @@ async def get_config():
         generation_max_tokens=s.generation_max_tokens,
         chapter_segment_threshold=s.chapter_segment_threshold,
         segment_target_chars=s.segment_target_chars,
-        has_summary_key=bool(s.summary_api_key and not s.summary_api_key.startswith("sk-your")),
-        has_generation_key=bool(
-            s.generation_api_key and not s.generation_api_key.startswith("sk-your")
-        ),
-        has_embedding_key=bool(s.embedding_api_key and not s.embedding_api_key.startswith("sk-your")),
+        has_summary_key=_key_configured(s.summary_api_key),
+        has_generation_key=_key_configured(s.generation_api_key),
+        has_embedding_key=_key_configured(s.embedding_api_key),
         stage_routes=_stage_routes(s),
     )

@@ -112,12 +112,14 @@ class LLMClient:
         await self.limiter.acquire(est)
 
         async def _call() -> tuple[list[list[float]], int]:
-            from openai import AsyncOpenAI
-
-            client = AsyncOpenAI(api_key=s.embedding_api_key or "sk-placeholder", base_url=s.embedding_base_url)
-            # 智谱 Embedding-3 等支持 dimensions；与 EMBEDDING_DIMS 对齐（默认 2048）
+            client = self._openai_client(api_key=s.embedding_api_key, base_url=s.embedding_base_url)
+            # 仅对明确支持 dimensions 的模型传入（OpenAI text-embedding-3 / 智谱 embedding-3）
             create_kwargs: dict[str, Any] = {"model": s.embedding_model, "input": texts}
-            if s.embedding_dims:
+            model_l = (s.embedding_model or "").lower()
+            if s.embedding_dims and (
+                model_l.startswith("text-embedding-3")
+                or model_l in ("embedding-3", "embedding-2")
+            ):
                 create_kwargs["dimensions"] = s.embedding_dims
             resp = await client.embeddings.create(**create_kwargs)
             # 按 input index 对齐，避免部分厂商乱序返回
@@ -163,6 +165,12 @@ class LLMClient:
             or "kimi.ai" in base
         )
 
+    @staticmethod
+    def _is_anonymous_key(api_key: str | None) -> bool:
+        """空密钥 / anonymous / none：部分免费网关（如 OVH AI Endpoints 匿名档）拒绝 Authorization。"""
+        key = (api_key or "").strip().lower()
+        return key in ("", "anonymous", "none", "no-key", "nokey")
+
     def _http_timeout(self):
         """连接短超时；读超时按 chunk 续命，避免无 timeout 永久挂死或默认过短半截断。"""
         import httpx
@@ -173,6 +181,31 @@ class LLMClient:
             read=s.llm_stream_read_timeout,
             write=s.llm_connect_timeout,
             pool=s.llm_connect_timeout,
+        )
+
+    def _openai_client(self, *, api_key: str | None, base_url: str):
+        """构建 AsyncOpenAI；匿名密钥时去掉 Authorization，便于免费公开兼容端点。"""
+        import httpx
+        from openai import AsyncOpenAI
+
+        timeout = self._http_timeout()
+        if self._is_anonymous_key(api_key):
+
+            class _StripAuth(httpx.Auth):
+                def auth_flow(self, request: httpx.Request):
+                    request.headers.pop("Authorization", None)
+                    yield request
+
+            return AsyncOpenAI(
+                api_key="anonymous",
+                base_url=base_url,
+                timeout=timeout,
+                http_client=httpx.AsyncClient(auth=_StripAuth(), timeout=timeout),
+            )
+        return AsyncOpenAI(
+            api_key=api_key or "sk-placeholder",
+            base_url=base_url,
+            timeout=timeout,
         )
 
     def _openai_chat_kwargs(
@@ -193,13 +226,7 @@ class LLMClient:
     async def _openai_chat(
         self, ep: ModelEndpoint, messages: list[dict[str, str]], temperature: float, max_tokens: int
     ) -> ChatResult:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(
-            api_key=ep.api_key or "sk-placeholder",
-            base_url=ep.base_url,
-            timeout=self._http_timeout(),
-        )
+        client = self._openai_client(api_key=ep.api_key, base_url=ep.base_url)
         resp = await client.chat.completions.create(
             **self._openai_chat_kwargs(ep, messages, temperature, max_tokens)  # type: ignore[arg-type]
         )
@@ -216,13 +243,7 @@ class LLMClient:
     async def _openai_stream(
         self, ep: ModelEndpoint, messages: list[dict[str, str]], temperature: float, max_tokens: int
     ) -> AsyncIterator[dict[str, Any]]:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(
-            api_key=ep.api_key or "sk-placeholder",
-            base_url=ep.base_url,
-            timeout=self._http_timeout(),
-        )
+        client = self._openai_client(api_key=ep.api_key, base_url=ep.base_url)
         create_kwargs = self._openai_chat_kwargs(ep, messages, temperature, max_tokens)
         create_kwargs["stream"] = True
         if not self._is_kimi_endpoint(ep):
