@@ -20,6 +20,7 @@ from app.models import Chapter, Novel, StyleSample, Summary
 from app.services import story_bible as bible_svc
 from app.services import writeback as writeback_svc
 from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.epub_import import EpubImportError, is_epub_upload, parse_epub
 from app.services.novel_role import normalize_role
 from app.services.scratch import SCRATCH_INGEST_DETAIL, ScratchError, is_scratch_origin
 from app.services.retrieval import embed_and_store, embed_and_store_batch
@@ -71,7 +72,58 @@ def preview_from_text(raw: bytes | str, *, suggested_title: str = "未命名小�
     }
 
 
+def preview_from_upload(raw: bytes, *, filename: str, suggested_title: str = "未命名小说") -> dict[str, Any]:
+    if is_epub_upload(raw, filename):
+        return preview_from_epub(raw, filename=filename, suggested_title=suggested_title)
+    return preview_from_text(raw, suggested_title=suggested_title)
+
+
+def preview_from_epub(raw: bytes, *, filename: str, suggested_title: str = "未命名小说") -> dict[str, Any]:
+    book = parse_epub(raw)
+    stem = Path(filename).name
+    if "." in stem:
+        stem = stem.rsplit(".", 1)[0]
+    suggested = (suggested_title or "").strip()
+    if suggested and suggested not in {"未命名小说", stem}:
+        title = suggested
+    else:
+        title = book.title or suggested or stem or "未命名小说"
+    full = "\n\n".join(f"{c.title}\n\n{c.content}".rstrip() for c in book.chapters)
+    token = uuid.uuid4().hex
+    _import_cache[token] = {
+        "chapters": book.chapters,
+        "title": title,
+        "text": full,
+        "author": book.author,
+    }
+    return {
+        "title": title,
+        "author": book.author,
+        "total_chars": count_chars(full),
+        "chapter_count": len(book.chapters),
+        "chapters": [
+            {
+                "index": c.index,
+                "title": c.title,
+                "volume": c.volume,
+                "char_count": c.char_count,
+                "preview": c.content[:200],
+            }
+            for c in book.chapters
+        ],
+        "import_token": token,
+    }
+
+
 def preview_from_files(files: list[tuple[str, bytes]], *, suggested_title: str = "未命名小说") -> dict[str, Any]:
+    epubs = [(path, data) for path, data in files if is_epub_upload(data, path)]
+    if epubs and len(epubs) != len(files):
+        raise EpubImportError("请单独导入 EPUB，或只选择 txt / md")
+    if len(epubs) > 1:
+        raise EpubImportError("一次只能导入一本 EPUB")
+    if len(epubs) == 1:
+        path, data = epubs[0]
+        return preview_from_epub(data, filename=path, suggested_title=suggested_title)
     decoded: list[tuple[str, str]] = [(path, clean_text(decode_bytes(data))) for path, data in files]
     chapters = parse_directory_import(decoded)
     token = uuid.uuid4().hex

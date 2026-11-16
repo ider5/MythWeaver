@@ -1572,6 +1572,13 @@ a.home-go {
   animation: home-rise 480ms ease both;
 }
 
+.export-scope {
+  width: 9.5rem;
+  max-width: 46vw;
+  padding-top: 0.42rem;
+  padding-bottom: 0.42rem;
+}
+
 .ws-tabs {
   animation: home-rise 560ms ease 40ms both;
 }

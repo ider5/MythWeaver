@@ -74,6 +74,7 @@ class ChapterPreview(BaseModel):
 
 class ImportPreviewOut(BaseModel):
     title: str
+    author: Optional[str] = None
     total_chars: int
     chapter_count: int
     chapters: list[ChapterPreview]
