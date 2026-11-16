@@ -49,6 +49,17 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 - `GET|PUT /{oid}`
 - `POST /{oid}/confirm`
 
+条目除原有 `order`、`title`、`summary`、`key_points`、`status` 外，增加章节蓝图字段。旧库缺列时启动自动补齐，读出来为空，已有标题与概要保持不变。
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `purpose` | string | 主角小目标 |
+| `conflict` | string | 冲突与转折 |
+| `suspense_hook` | string | 章末悬念钩子 |
+| `characters` | string[] | 出场人物 |
+
+`PUT` 未带某个蓝图字段（或传 `null`）时保留库内原值；传空字符串或空数组会清空。生成大纲时模型会填写这些字段。确认后的条目进入续写：检索查询和章节生成提示都会带上小目标、冲突与转折、悬念钩子和出场人物。
+
 ## 续写（SSE）
 
 - `GET /api/novels/{id}/generate/stream?outline_item_id=&run_critic=&max_critic_rounds=`

@@ -22,7 +22,19 @@ Story Bible 摘要：
 {
   "title": "大纲标题",
   "items": [
-    {"order": 1, "title": "第{{ start_from_chinese }}章：章标题", "summary": "本章概要", "key_points": ["要点1", "要点2"]}
+    {
+      "order": 1,
+      "title": "第{{ start_from_chinese }}章：章标题",
+      "summary": "本章概要（发生了什么）",
+      "purpose": "主角在本章最想解决的一件事",
+      "conflict": "冲突与转折（阻碍、反转或代价）",
+      "suspense_hook": "章末悬念钩子",
+      "characters": ["出场人物1", "出场人物2"],
+      "key_points": ["要点1", "要点2"]
+    }
   ]
 }
-要求：节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。items 数量必须恰好为 {{ chapter_count }} 条，order 从 1 递增。
+要求：
+- 节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。
+- items 数量必须恰好为 {{ chapter_count }} 条，order 从 1 递增。
+- 每条都必须填写 purpose、conflict、suspense_hook、characters。purpose 只写一个可执行的小目标；conflict 写清阻碍与转折，不要只重复 summary；suspense_hook 是章末未解问题；characters 只列本章实际出场的人物姓名。

@@ -147,6 +147,19 @@ async def _ensure_schema_columns(conn) -> None:
     if "median_chapter_chars" not in names:
         await conn.execute(text("ALTER TABLE novels ADD COLUMN median_chapter_chars INTEGER DEFAULT 0"))
 
+    item_rows = (await conn.execute(text("PRAGMA table_info(outline_items)"))).fetchall()
+    item_names = {r[1] for r in item_rows}
+    # create_all 不会给已有表加列；旧大纲仍保留 title/summary/key_points。
+    blueprint_columns = (
+        ("purpose", "TEXT NOT NULL DEFAULT ''"),
+        ("conflict", "TEXT NOT NULL DEFAULT ''"),
+        ("suspense_hook", "TEXT NOT NULL DEFAULT ''"),
+        ("characters", "TEXT NOT NULL DEFAULT '[]'"),
+    )
+    for column, ddl in blueprint_columns:
+        if item_names and column not in item_names:
+            await conn.execute(text(f"ALTER TABLE outline_items ADD COLUMN {column} {ddl}"))
+
 
 async def _ensure_vec_table(conn, dims: int) -> bool:
     """创建 sqlite-vec 虚拟表；维度不一致时重建。失败返回 False。"""

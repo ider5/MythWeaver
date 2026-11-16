@@ -23,6 +23,80 @@ if TYPE_CHECKING:
 _CHAPTER_TITLE_PREFIX = re.compile(
     r"^[\s　]*第[零〇一二三四五六七八九十百千万两0-9]+章\s*[：:\-—–]?\s*"
 )
+_NAME_SPLIT = re.compile(r"[；;、,，\n/|]+")
+
+# 模型可能用 Pagekin 驼峰或中文键；入库一律用这些规范名。
+_BLUEPRINT_ALIASES: dict[str, tuple[str, ...]] = {
+    "purpose": ("purpose", "goal", "chapter_goal", "主角小目标", "目标"),
+    "conflict": ("conflict", "turning_point", "key_events", "keyEvents", "冲突与转折", "冲突"),
+    "suspense_hook": ("suspense_hook", "suspenseHook", "hook", "suspense", "悬念钩子", "悬念"),
+    "characters": ("characters", "cast", "appearing_characters", "appearingCharacters", "出场人物"),
+}
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "；".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip()
+
+
+def _as_name_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = _NAME_SPLIT.split(value)
+    elif isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict):
+                parts.append(str(item.get("name") or item.get("title") or ""))
+            else:
+                parts.append(str(item))
+    else:
+        parts = [str(value)]
+    names: list[str] = []
+    for part in parts:
+        name = part.strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _first_present(raw: dict, keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in raw and raw[key] is not None:
+            return raw[key]
+    return None
+
+
+def blueprint_from_raw(raw: dict) -> dict[str, Any]:
+    """取出蓝图字段。缺省为空，不改动 title / summary / key_points。"""
+    return {
+        "purpose": _as_text(_first_present(raw, _BLUEPRINT_ALIASES["purpose"])),
+        "conflict": _as_text(_first_present(raw, _BLUEPRINT_ALIASES["conflict"])),
+        "suspense_hook": _as_text(_first_present(raw, _BLUEPRINT_ALIASES["suspense_hook"])),
+        "characters": _as_name_list(_first_present(raw, _BLUEPRINT_ALIASES["characters"])),
+    }
+
+
+def apply_blueprint(row: OutlineItem, raw: dict, *, fill_missing: bool) -> None:
+    """写入蓝图。更新已有条目时，缺省或 null 保留原值。"""
+    if fill_missing:
+        fields = blueprint_from_raw(raw)
+    else:
+        fields = {}
+        if "purpose" in raw and raw["purpose"] is not None:
+            fields["purpose"] = _as_text(raw["purpose"])
+        if "conflict" in raw and raw["conflict"] is not None:
+            fields["conflict"] = _as_text(raw["conflict"])
+        if "suspense_hook" in raw and raw["suspense_hook"] is not None:
+            fields["suspense_hook"] = _as_text(raw["suspense_hook"])
+        if "characters" in raw and raw["characters"] is not None:
+            fields["characters"] = _as_name_list(raw["characters"])
+    for key, value in fields.items():
+        setattr(row, key, value)
 
 
 def rewrite_outline_title(title: str, chapter_number: int) -> str:
@@ -48,6 +122,7 @@ def normalize_outline_items(
         row["title"] = rewrite_outline_title(str(item.get("title") or ""), chapter_number)
         row["summary"] = item.get("summary") or ""
         row["key_points"] = item.get("key_points") or []
+        row.update(blueprint_from_raw(item))
         normalized.append(row)
     return normalized
 
@@ -249,6 +324,10 @@ async def generate_outline(
                 title=item["title"],
                 summary=item.get("summary") or "",
                 key_points=item.get("key_points") or [],
+                purpose=item.get("purpose") or "",
+                conflict=item.get("conflict") or "",
+                suspense_hook=item.get("suspense_hook") or "",
+                characters=item.get("characters") or [],
                 status="pending",
             )
         )
@@ -302,18 +381,19 @@ async def update_outline(
                 row.key_points = raw.get("key_points") or []
                 if raw.get("status"):
                     row.status = raw["status"]
+                apply_blueprint(row, raw, fill_missing=False)
                 keep.add(item_id)
             else:
-                session.add(
-                    OutlineItem(
-                        outline_id=outline.id,
-                        order=int(raw["order"]),
-                        title=raw.get("title") or "",
-                        summary=raw.get("summary") or "",
-                        key_points=raw.get("key_points") or [],
-                        status=raw.get("status") or "pending",
-                    )
+                created = OutlineItem(
+                    outline_id=outline.id,
+                    order=int(raw["order"]),
+                    title=raw.get("title") or "",
+                    summary=raw.get("summary") or "",
+                    key_points=raw.get("key_points") or [],
+                    status=raw.get("status") or "pending",
                 )
+                apply_blueprint(created, raw, fill_missing=True)
+                session.add(created)
         for oid, row in existing.items():
             if oid not in keep:
                 await session.delete(row)
