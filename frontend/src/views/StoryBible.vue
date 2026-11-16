@@ -9,6 +9,7 @@ import {
 } from '@/api'
 import RelationGraph from '@/components/RelationGraph.vue'
 import ThreadTimeline from '@/components/ThreadTimeline.vue'
+import WritebackReview from '@/components/WritebackReview.vue'
 import {
   formatRelationshipInput,
   indexRelationships,
@@ -200,6 +201,7 @@ onMounted(load)
 
 <template>
   <div>
+    <WritebackReview :novel-id="novelId" mode="pending" @applied="load" />
     <div class="flex flex-wrap gap-2 mb-5 items-center">
       <div class="ws-tabs">
         <button

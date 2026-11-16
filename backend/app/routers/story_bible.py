@@ -1,11 +1,12 @@
 """Story Bible 路由。"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Character, Novel, PlotThread, WorldSetting
+from app.models import Chapter, Character, Novel, PlotThread, WorldSetting
 from app.schemas.story_bible import (
+    BibleProposalOut,
     CharacterCreate,
     CharacterOut,
     CharacterUpdate,
@@ -16,8 +17,14 @@ from app.schemas.story_bible import (
     WorldSettingCreate,
     WorldSettingOut,
     WorldSettingUpdate,
+    WritebackApplyIn,
+    WritebackChangeOut,
+    WritebackFieldOut,
+    WritebackProposeIn,
 )
 from app.services import story_bible as bible_svc
+from app.services import writeback as writeback_svc
+from app.services.writeback import WritebackError
 
 router = APIRouter(prefix="/api/novels/{novel_id}/bible", tags=["story_bible"])
 
@@ -161,3 +168,111 @@ async def delete_thread(novel_id: int, pt_id: int, session: AsyncSession = Depen
     await session.delete(row)
     await session.commit()
     return {"message": "ok"}
+
+
+def _raise_writeback(exc: WritebackError) -> None:
+    raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+async def _proposal_out(session: AsyncSession, row) -> BibleProposalOut:
+    title = None
+    if row.chapter_id:
+        chapter = await session.get(Chapter, row.chapter_id)
+        if chapter is not None:
+            title = chapter.title
+    changes = []
+    for raw in row.changes or []:
+        changes.append(
+            WritebackChangeOut(
+                id=raw["id"],
+                kind=raw["kind"],
+                op=raw["op"],
+                target_id=raw.get("target_id"),
+                label=raw.get("label") or "",
+                summary=raw.get("summary") or "",
+                fields=[WritebackFieldOut(**field) for field in (raw.get("fields") or [])],
+                after=raw.get("after") or {},
+            )
+        )
+    return BibleProposalOut(
+        id=row.id,
+        novel_id=row.novel_id,
+        chapter_id=row.chapter_id,
+        chapter_index=row.chapter_index,
+        chapter_title=title,
+        status=row.status,
+        changes=changes,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/proposals", response_model=list[BibleProposalOut])
+async def list_writeback_proposals(
+    novel_id: int,
+    status: str = Query("pending"),
+    session: AsyncSession = Depends(get_session),
+):
+    await _ensure_novel(session, novel_id)
+    try:
+        rows = await writeback_svc.list_proposals(session, novel_id, status)
+    except WritebackError as exc:
+        _raise_writeback(exc)
+    return [await _proposal_out(session, row) for row in rows]
+
+
+@router.post("/proposals", response_model=BibleProposalOut)
+async def propose_writeback(
+    novel_id: int,
+    body: WritebackProposeIn,
+    session: AsyncSession = Depends(get_session),
+):
+    novel = await _ensure_novel(session, novel_id)
+    chapter = await session.get(Chapter, body.chapter_id)
+    if chapter is None or chapter.novel_id != novel_id:
+        raise HTTPException(404, "章节不存在")
+    try:
+        row = await writeback_svc.ensure_generated_writeback(
+            session, novel, chapter, force=body.force
+        )
+    except WritebackError as exc:
+        await session.rollback()
+        _raise_writeback(exc)
+    await session.commit()
+    await session.refresh(row)
+    return await _proposal_out(session, row)
+
+
+@router.post("/proposals/{proposal_id}/apply", response_model=BibleProposalOut)
+async def apply_writeback(
+    novel_id: int,
+    proposal_id: int,
+    body: WritebackApplyIn,
+    session: AsyncSession = Depends(get_session),
+):
+    await _ensure_novel(session, novel_id)
+    try:
+        row = await writeback_svc.apply_proposal(session, novel_id, proposal_id, body.change_ids)
+    except WritebackError as exc:
+        await session.rollback()
+        _raise_writeback(exc)
+    await session.commit()
+    await session.refresh(row)
+    return await _proposal_out(session, row)
+
+
+@router.post("/proposals/{proposal_id}/dismiss", response_model=BibleProposalOut)
+async def dismiss_writeback(
+    novel_id: int,
+    proposal_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    await _ensure_novel(session, novel_id)
+    try:
+        row = await writeback_svc.dismiss_proposal(session, novel_id, proposal_id)
+    except WritebackError as exc:
+        await session.rollback()
+        _raise_writeback(exc)
+    await session.commit()
+    await session.refresh(row)
+    return await _proposal_out(session, row)

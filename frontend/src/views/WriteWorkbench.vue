@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { novelsApi, outlineApi, tasksApi, type Novel, type Outline, type OutlineItem } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
+import WritebackReview from '@/components/WritebackReview.vue'
 import { useRafText } from '@/composables/useRafText'
 
 /** 超过此时长无任何 SSE 事件（含 ping）则判定卡死；应 > 2× 后端心跳间隔 */
@@ -19,6 +20,8 @@ const status = ref('')
 const content = ref('')
 const consistency = ref<any>(null)
 const chapterId = ref<number | null>(null)
+const writebackToken = ref(0)
+const writebackReload = ref(0)
 const versions = ref<any[]>([])
 const activeVersionId = ref<number | null>(null)
 const error = ref('')
@@ -235,6 +238,7 @@ function clearEditor() {
   stream.clearDom()
   consistency.value = null
   chapterId.value = null
+  writebackToken.value = 0
   versions.value = []
   activeVersionId.value = null
   reviseProgress.value = 0
@@ -372,6 +376,7 @@ async function loadChapterForItem(item: OutlineItem | null) {
 
 async function selectItem(item: OutlineItem) {
   if (streaming.value) return
+  writebackToken.value = 0
   selected.value = item
   await loadChapterForItem(item)
 }
@@ -418,6 +423,7 @@ async function startGenerate() {
   status.value = '连接中…'
   content.value = ''
   consistency.value = null
+  writebackToken.value = 0
   chapterId.value = null
   versions.value = []
   activeVersionId.value = null
@@ -469,6 +475,7 @@ async function startGenerate() {
       chapterId.value = data.chapter_id
       activeVersionId.value = data.version_id ?? null
       streaming.value = false
+      writebackToken.value += 1
       status.value = data.overwritten ? '完成（已覆盖已有章节）' : '完成'
       es?.close()
       es = null
@@ -562,6 +569,7 @@ function watchReviseTask(taskId: number) {
         reviseProgress.value = 100
         reviseMessage.value = '入库完成'
         status.value = '已入库并更新知识库'
+        writebackReload.value += 1
         closeReviseEs()
         return
       }
@@ -587,6 +595,7 @@ function watchReviseTask(taskId: number) {
         reviseProgress.value = 100
         reviseMessage.value = '入库完成'
         status.value = '已入库并更新知识库'
+        writebackReload.value += 1
         closeReviseEs()
         return
       }
@@ -908,6 +917,14 @@ onUnmounted(() => {
           />
         </div>
       </div>
+
+      <WritebackReview
+        v-if="chapterId && !streaming"
+        :novel-id="novelId"
+        :chapter-id="chapterId"
+        :propose-token="writebackToken"
+        :reload-token="writebackReload"
+      />
 
       <section v-if="consistency" class="wb-critic" aria-label="一致性审阅">
         <div class="wb-critic__head">
