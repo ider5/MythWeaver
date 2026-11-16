@@ -25,6 +25,9 @@ onMounted(() => {
         error.value = task.value.error || '入库失败'
         es?.close()
       }
+      if (task.value?.status === 'cancelled') {
+        es?.close()
+      }
     } catch {
       /* ignore */
     }
@@ -47,6 +50,7 @@ function statusText(s?: string) {
   if (s === 'failed') return '失败'
   if (s === 'running') return '进行中'
   if (s === 'pending') return '排队'
+  if (s === 'cancelled') return '已取消'
   return s
 }
 

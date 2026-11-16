@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import struct
+from collections.abc import Callable
 from typing import Optional
 
 from sqlalchemy import select, text
@@ -149,6 +150,7 @@ async def embed_and_store_batch(
     items: list[tuple[Chapter, str]],
     *,
     novel_id: int,
+    before_batch: Callable[[], None] | None = None,
 ) -> int:
     """批量向量化并写入；返回成功写入条数。智谱等支持一次多 input。"""
     if not items:
@@ -159,6 +161,8 @@ async def embed_and_store_batch(
     written = 0
 
     for start in range(0, len(items), batch_size):
+        if before_batch is not None:
+            before_batch()
         chunk = items[start : start + batch_size]
         texts = [t[:6000] for _, t in chunk]
         try:

@@ -47,8 +47,11 @@ export interface Task {
   status: string
   progress: number
   message: string
-  result?: Record<string, unknown>
-  error?: string
+  result?: Record<string, unknown> | null
+  error?: string | null
+  recoverable?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Character {
@@ -282,6 +285,8 @@ export const tasksApi = {
   get: (id: number) => api.get<Task>(`/tasks/${id}`),
   list: (novelId?: number) =>
     api.get<Task[]>('/tasks', { params: novelId ? { novel_id: novelId } : {} }),
+  cancel: (id: number) => api.post<Task>(`/tasks/${id}/cancel`),
+  retry: (id: number) => api.post<Task>(`/tasks/${id}/retry`),
 }
 
 export const costsApi = {

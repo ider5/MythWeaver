@@ -245,6 +245,21 @@ class AsyncTask(Base):
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
+    def can_retry(self) -> bool:
+        """失败或取消后是否还能按原参数重新入队。"""
+        if self.task_type == "ingest":
+            return self.novel_id is not None
+        payload = self.result or {}
+        if self.task_type == "revise_commit":
+            return bool(payload.get("chapter_id"))
+        if self.task_type == "outline_generate":
+            return self.novel_id is not None and payload.get("chapter_count") is not None
+        return False
+
+    @property
+    def recoverable(self) -> bool:
+        return self.status in ("failed", "cancelled") and self.can_retry()
+
 
 class CostLog(Base):
     __tablename__ = "cost_logs"

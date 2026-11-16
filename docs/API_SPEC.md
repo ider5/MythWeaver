@@ -81,9 +81,11 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 ## 任务 / 成本
 
-- `GET /api/tasks?novel_id=`
+- `GET /api/tasks?novel_id=` 列表。`recoverable: true` 表示失败或已取消、且可以重试
 - `GET /api/tasks/{tid}`
-- `GET /api/tasks/{tid}/events` SSE 进度
+- `POST /api/tasks/{tid}/cancel` 取消排队中或执行中的任务。已结束返回 409；重复取消返回当前任务
+- `POST /api/tasks/{tid}/retry` 重试可恢复任务。入库会重新调用入库；返回新任务
+- `GET /api/tasks/{tid}/events` SSE 进度（终态含 completed / failed / cancelled）
 - `GET /api/costs?novel_id=`
 
 ## 一致性报告结构

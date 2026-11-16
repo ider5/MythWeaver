@@ -163,6 +163,7 @@ async def start_ingestion(session: AsyncSession, novel_id: int):
 
 
 async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgress) -> dict:
+    progress.raise_if_cancelled()
     novel_id = task.novel_id
     assert novel_id
     settings = get_settings()
@@ -193,6 +194,7 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
         nonlocal done
         assert db_mod.SessionLocal
         async with sem:
+            progress.raise_if_cancelled()
             async with db_mod.SessionLocal() as s:
                 ch = await s.get(Chapter, ch_id)
                 n = await s.get(Novel, novel_id)
@@ -210,10 +212,12 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
                         )
                     return
                 if ch.status == "raw":
+                    progress.raise_if_cancelled()
                     await _summarize_chapter(s, n, ch)
                     ch.status = "summarized"
                     await s.commit()
                 if ch.status == "summarized":
+                    progress.raise_if_cancelled()
                     await _extract_chapter(s, n, ch)
                     ch.status = "extracted"
                     await s.commit()
@@ -306,7 +310,12 @@ async def _batch_embed_novel(
         await session.commit()
         return
 
-    written = await embed_and_store_batch(session, need_api, novel_id=novel.id)
+    written = await embed_and_store_batch(
+        session,
+        need_api,
+        novel_id=novel.id,
+        before_batch=progress.raise_if_cancelled,
+    )
     for ch, _ in need_api:
         if ch.embedding_json:
             ch.status = "embedded"
