@@ -244,3 +244,29 @@ async def test_retry_blocked_while_ingest_running_and_unknown_type(client):
 
     release.set()
     await get_task_queue().wait_task(running_id, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ingest_rejected(client):
+    await client.get("/api/health")
+    novel_id = await _novel()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow(session, task, progress):
+        started.set()
+        await release.wait()
+        return {"ok": True}
+
+    get_task_queue().register("ingest", slow)
+    first = await client.post(f"/api/novels/{novel_id}/ingest")
+    assert first.status_code == 200
+    task_id = first.json()["task_id"]
+    await asyncio.wait_for(started.wait(), timeout=5)
+
+    second = await client.post(f"/api/novels/{novel_id}/ingest")
+    assert second.status_code == 409
+    assert "进行中" in second.json()["detail"]
+
+    release.set()
+    await get_task_queue().wait_task(task_id, timeout=5)

@@ -70,6 +70,8 @@ async def generate_batch(
     取消用现有 `POST /api/tasks/{task_id}/cancel`。正在写的一章会写完，下一章不再开始。
     Critic 未通过或某一章生成失败时，后续章节也不会再写。
     """
+    from app.services.tasks import TaskDuplicateError
+
     try:
         task = await enqueue_batch_generate(
             session,
@@ -79,6 +81,8 @@ async def generate_batch(
             count=body.count,
             run_critic=body.run_critic,
         )
+    except TaskDuplicateError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except BatchNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
     except BatchConflict as exc:

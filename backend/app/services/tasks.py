@@ -36,6 +36,16 @@ class TaskCancelled(Exception):
     """协作式取消。处理器在检查点抛出后，任务记为 cancelled。"""
 
 
+class TaskDuplicateError(Exception):
+    """同书同类型仍有排队/执行中的任务时拒绝再入队。"""
+
+    def __init__(self, existing: AsyncTask):
+        self.existing = existing
+        super().__init__(
+            f"已有进行中的「{existing.task_type}」任务 #{existing.id}，请等待完成或取消后再试"
+        )
+
+
 def _is_db_locked(exc: BaseException) -> bool:
     msg = str(exc).lower()
     return "database is locked" in msg or "database is busy" in msg
@@ -250,6 +260,25 @@ class TaskQueue:
             self._progress[task_id] = TaskProgress(task_id)
         return self._progress[task_id]
 
+    async def find_active(
+        self,
+        session: AsyncSession,
+        *,
+        task_type: str,
+        novel_id: int | None,
+    ) -> AsyncTask | None:
+        """同书同类型的 pending/running 任务（若有）。"""
+        stmt = select(AsyncTask).where(
+            AsyncTask.task_type == task_type,
+            AsyncTask.status.in_(("pending", "running")),
+        )
+        if novel_id is None:
+            stmt = stmt.where(AsyncTask.novel_id.is_(None))
+        else:
+            stmt = stmt.where(AsyncTask.novel_id == novel_id)
+        stmt = stmt.order_by(AsyncTask.id.desc()).limit(1)
+        return await session.scalar(stmt)
+
     async def enqueue(
         self,
         session: AsyncSession,
@@ -258,9 +287,14 @@ class TaskQueue:
         novel_id: int | None = None,
         message: str = "排队中",
         result: dict[str, Any] | None = None,
+        allow_duplicate: bool = False,
     ) -> AsyncTask:
         if task_type not in self._handlers:
             raise ValueError(f"未知任务类型: {task_type}")
+        if not allow_duplicate:
+            existing = await self.find_active(session, task_type=task_type, novel_id=novel_id)
+            if existing is not None:
+                raise TaskDuplicateError(existing)
         task = AsyncTask(
             novel_id=novel_id,
             task_type=task_type,

@@ -152,12 +152,17 @@ async def confirm_import(
 
 
 async def start_ingestion(session: AsyncSession, novel_id: int):
+    from app.services.tasks import TaskDuplicateError
+
     novel = await session.get(Novel, novel_id)
     if novel is None:
         raise ValueError("小说不存在")
+    queue = get_task_queue()
+    existing = await queue.find_active(session, task_type="ingest", novel_id=novel_id)
+    if existing is not None:
+        raise TaskDuplicateError(existing)
     novel.status = "ingesting"
     await session.commit()
-    queue = get_task_queue()
     return await queue.enqueue(
         session, task_type="ingest", novel_id=novel_id, message="入库排队中"
     )

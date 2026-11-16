@@ -1,11 +1,42 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { novelsApi, type Novel } from '@/api'
+import { novelsApi, tasksApi, type Novel, type Task } from '@/api'
+
+defineOptions({ name: 'NovelWorkspace' })
 
 const route = useRoute()
 const novel = ref<Novel | null>(null)
 const id = computed(() => Number(route.params.id))
+const activeTasks = ref<Task[]>([])
+let taskPoll = 0
+
+const activeSummary = computed(() => {
+  const n = activeTasks.value.length
+  if (!n) return ''
+  const first = activeTasks.value[0]
+  const label =
+    first.task_type === 'ingest'
+      ? '入库'
+      : first.task_type === 'outline_generate'
+        ? '大纲'
+        : first.task_type === 'batch_generate'
+          ? '连续生成'
+          : first.task_type === 'revise_commit'
+            ? '修订入库'
+            : first.task_type
+  const more = n > 1 ? ` 等 ${n} 项` : ''
+  return `${label}${more}：${first.message || '进行中'} ${Math.round(Number(first.progress) || 0)}%`
+})
+
+async function refreshActiveTasks() {
+  try {
+    const { data } = await tasksApi.list(id.value)
+    activeTasks.value = data.filter((t) => t.status === 'pending' || t.status === 'running')
+  } catch {
+    /* ignore poll errors */
+  }
+}
 
 const allTabs = [
   { name: 'bible', label: '设定', path: 'bible' },
@@ -40,6 +71,15 @@ function statusTone(s?: string) {
 onMounted(async () => {
   const { data } = await novelsApi.get(id.value)
   novel.value = data
+  await refreshActiveTasks()
+  taskPoll = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    refreshActiveTasks()
+  }, 2500)
+})
+
+onUnmounted(() => {
+  if (taskPoll) window.clearInterval(taskPoll)
 })
 </script>
 
@@ -82,6 +122,14 @@ onMounted(async () => {
         {{ t.label }}
       </RouterLink>
     </nav>
-    <RouterView />
+    <div v-if="activeSummary" class="ws-live panel px-4 py-3 mb-4 flex items-center justify-between gap-3">
+      <p class="page-desc m-0 truncate" role="status">{{ activeSummary }}</p>
+      <RouterLink class="btn-ghost shrink-0" :to="`/novels/${id}/tasks`">查看进度</RouterLink>
+    </div>
+    <RouterView v-slot="{ Component }">
+      <KeepAlive :max="8">
+        <component :is="Component" />
+      </KeepAlive>
+    </RouterView>
   </div>
 </template>
