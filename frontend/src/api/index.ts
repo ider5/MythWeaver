@@ -184,7 +184,7 @@ export const novelsApi = {
   seedScratch: (id: number) => api.post<ScratchSeed>(`/novels/${id}/scratch/seed`),
   remove: (id: number) => api.delete(`/novels/${id}`),
   /** 导出全书章节正文；format: txt（默认）| md */
-  exportUrl: (id: number, format: 'txt' | 'md' = 'txt') =>
+  exportUrl: (id: number, format: 'txt' | 'md' | 'epub' = 'txt') =>
     `/api/novels/${id}/export?format=${format}`,
   previewImport: (form: FormData) =>
     api.post<ImportPreview>('/novels/import/preview', form, {

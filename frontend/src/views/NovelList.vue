@@ -46,7 +46,7 @@ async function remove(n: Novel) {
   await load()
 }
 
-function exportNovel(n: Novel, format: 'txt' | 'md' = 'txt') {
+function exportNovel(n: Novel, format: 'txt' | 'md' | 'epub' = 'txt') {
   window.open(novelsApi.exportUrl(n.id, format), '_blank')
 }
 

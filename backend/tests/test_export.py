@@ -164,3 +164,25 @@ async def test_export_invalid_format(client):
 
     r = await client.get(f"/api/novels/{novel_id}/export", params={"format": "pdf"})
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_export_epub_zip_structure(client):
+    import io
+    import zipfile
+
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id = await _seed_novel_with_chapters(session)
+
+    r = await client.get(f"/api/novels/{novel_id}/export", params={"format": "epub"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/epub+zip")
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        names = set(zf.namelist())
+        assert "mimetype" in names
+        assert "META-INF/container.xml" in names
+        assert "OEBPS/content.opf" in names
+        assert "OEBPS/toc.ncx" in names
+        assert zf.read("mimetype") == b"application/epub+zip"
+        assert any(n.startswith("OEBPS/chap_") for n in names)

@@ -61,7 +61,7 @@ const kindLabel = computed(() => {
   return '续写'
 })
 
-function exportNovel(format: 'txt' | 'md' = 'txt') {
+function exportNovel(format: 'txt' | 'md' | 'epub' = 'txt') {
   window.open(novelsApi.exportUrl(id.value, format), '_blank')
 }
 
@@ -127,9 +127,15 @@ onUnmounted(() => {
           <RouterLink v-if="!novel?.chapter_count" :to="`/create?novel=${id}`">回到开书</RouterLink>
         </p>
       </div>
-      <div v-if="novel && !isReference" class="flex gap-2 shrink-0">
-        <button class="btn-ghost" type="button" title="导出为 TXT" @click="exportNovel('txt')">
-          导出
+      <div v-if="novel && !isReference" class="flex gap-2 shrink-0 export-actions">
+        <button class="btn-ghost" type="button" title="导出 TXT" @click="exportNovel('txt')">
+          TXT
+        </button>
+        <button class="btn-ghost" type="button" title="导出 Markdown" @click="exportNovel('md')">
+          MD
+        </button>
+        <button class="btn-ghost" type="button" title="导出 EPUB" @click="exportNovel('epub')">
+          EPUB
         </button>
       </div>
     </header>
