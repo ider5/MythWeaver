@@ -42,6 +42,8 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 | POST | `/api/novels/import/confirm` | `{ import_token, title?, author?, genre?, role? }`。`role`：`manuscript`（原稿，默认可续写导出）或 `reference`（参考，只拆文风与设定） |
 | POST | `/api/novels/{id}/ingest` | 启动入库 → `{ task_id }`。参考本同样可入库 |
 | GET | `/api/novels/{id}/export` | 导出 txt/md。参考本返回 409，不导出成书 |
+| GET | `/api/novels/{id}/backup` | 下载单本 ZIP 数据备份。原稿与参考本都可以。不含任务、费用和 WebDAV |
+| POST | `/api/novels/backup/restore` | multipart：`file` 为 ZIP，可选表单 `title`。恢复成一本新小说，不覆盖原书 |
 | GET | `/api/novels/{id}/chapters` | 章节列表（不含正文） |
 | GET | `/api/novels/{id}/chapters/{cid}` | 章节正文 |
 | GET | `/api/novels/{id}/chapters/{cid}/versions` | 版本链 |
@@ -51,6 +53,14 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 `role` 缺省为 `manuscript`。`origin` 缺省为 `import`。参考本可以抽取 Story Bible 与文风，但章节不作为续写来源：`POST /api/novels/{id}/generate` 返回 409；`GET .../generate/stream` 只发出 SSE `error`，不改状态、不写章节。
 
 从零开书（`origin=scratch`）没有原稿：`POST /ingest` 返回 409。播种设定后走原有大纲生成、确认和批量开篇；开篇提示会带上前提和文风。
+
+### 作品 ZIP 备份
+
+`GET /api/novels/{id}/backup` 返回 `application/zip`。`manifest.json` 的 `format` 为 `mythweaver-novel-backup`，`version` 为 `1`。`rows/*.json` 每张表一个数组：小说、章节、版本、摘要、人物、世界观、伏笔、设定提案、大纲、大纲条目、文风样本、递归记忆。
+
+不包含 `async_tasks` 和 `cost_logs`，也没有 WebDAV。章节向量在 `embedding_json` 里，恢复时按当前维度写回 sqlite-vec。`source_path` 只留在备份里，新书不写本地路径。状态为 `ingesting` 或 `generating` 时，新书改为 `ready`（没有章节则为 `imported`）。
+
+`POST /api/novels/backup/restore` 校验路径、体积、外键和版本链后分配新主键。可选 `title` 覆盖书名。包不合法返回 400，超过 80MB 返回 413，下载不存在的小说返回 404。
 
 ## Story Bible
 

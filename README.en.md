@@ -73,6 +73,7 @@ Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**,
 - `POST /api/novels`, `PATCH /api/novels/{id}`, and `POST /api/novels/import/confirm` accept `manuscript` or `reference`
 - `GET /api/novels?role=manuscript` is the default continuation source; `role=reference` returns only references. Omitting `role` returns both
 - `GET /api/novels/{id}/export` returns **409** for a reference
+- `GET /api/novels/{id}/backup` downloads one novel's rows as a ZIP; `POST /api/novels/backup/restore` imports that archive as a new novel and does not overwrite the original. Reference novels can be backed up. This is not WebDAV
 - `POST /api/novels/{id}/generate` and `POST /api/novels/{id}/generate/batch` return **409** for a reference. `GET /api/novels/{id}/generate/stream` emits an SSE `error` and does not change novel state or write a chapter
 - `POST /api/novels/{id}/ingest` still works for a reference
 

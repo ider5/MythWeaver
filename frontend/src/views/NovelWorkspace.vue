@@ -65,6 +65,10 @@ function exportNovel(format: 'txt' | 'md' | 'epub' = 'txt') {
   window.open(novelsApi.exportUrl(id.value, format), '_blank')
 }
 
+function downloadBackup() {
+  window.open(novelsApi.backupUrl(id.value), '_blank')
+}
+
 function statusLabel(s?: string) {
   if (s === 'ready') return '就绪'
   if (s === 'ingesting') return '入库中'
@@ -157,14 +161,40 @@ onUnmounted(() => {
           <RouterLink v-if="!novel?.chapter_count" :to="`/create?novel=${id}`">回到开书</RouterLink>
         </p>
       </div>
-      <div v-if="novel && !isReference" class="flex gap-2 shrink-0 export-actions">
-        <button class="btn-ghost" type="button" title="导出 TXT" @click="exportNovel('txt')">
+      <div v-if="novel" class="flex flex-wrap gap-2 shrink-0 justify-end export-actions">
+        <button
+          class="btn-ghost"
+          type="button"
+          title="下载 ZIP 备份，恢复时会成为一本新书"
+          @click="downloadBackup"
+        >
+          备份
+        </button>
+        <button
+          v-if="!isReference"
+          class="btn-ghost"
+          type="button"
+          title="导出 TXT"
+          @click="exportNovel('txt')"
+        >
           TXT
         </button>
-        <button class="btn-ghost" type="button" title="导出 Markdown" @click="exportNovel('md')">
+        <button
+          v-if="!isReference"
+          class="btn-ghost"
+          type="button"
+          title="导出 Markdown"
+          @click="exportNovel('md')"
+        >
           MD
         </button>
-        <button class="btn-ghost" type="button" title="导出 EPUB" @click="exportNovel('epub')">
+        <button
+          v-if="!isReference"
+          class="btn-ghost"
+          type="button"
+          title="导出 EPUB"
+          @click="exportNovel('epub')"
+        >
           EPUB
         </button>
       </div>
