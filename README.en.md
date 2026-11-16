@@ -145,7 +145,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health check: `GET http://localhost:8000/api/health`
@@ -168,7 +168,7 @@ From a fresh clone, at the repository root (Python and Node are not required on 
 docker compose up --build -d --wait
 ```
 
-`make up` runs the same command. Open **http://localhost:8080**. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
+`make up` runs the same command. Open **http://localhost:8080**. Compose publishes the host port explicitly as `8080:80`. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend; the API container listens on `0.0.0.0:8000` inside the Docker network so nginx can reach it, and port 8000 is not published on the host. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
 
 Keys belong in `backend/.env` (gitignored) and are injected when the container starts. To call models:
 

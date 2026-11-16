@@ -148,7 +148,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 健康检查：`GET http://localhost:8000/api/health`
@@ -171,7 +171,7 @@ npm run dev
 docker compose up --build -d --wait
 ```
 
-`make up` 是同一条命令。浏览器打开 **http://localhost:8080**。nginx 提供前端，并把 `/api`（含续写 SSE）反代到后端。SQLite 与导入备份在命名卷 `mythweaver-data`（容器内 `/data`）。`--wait` 等到 `/api/health` 返回成功。`make down` 或 `docker compose down` 停止；加上 `-v` 会删除数据卷。
+`make up` 是同一条命令。浏览器打开 **http://localhost:8080**。Compose 把宿主机端口显式发布为 `8080:80`。nginx 提供前端，并把 `/api`（含续写 SSE）反代到后端；API 容器在网络内监听 `0.0.0.0:8000` 以便 nginx 访问，不把 8000 映射到宿主机。SQLite 与导入备份在命名卷 `mythweaver-data`（容器内 `/data`）。`--wait` 等到 `/api/health` 返回成功。`make down` 或 `docker compose down` 停止；加上 `-v` 会删除数据卷。
 
 密钥写在 `backend/.env`（已 gitignore），由 Compose 在启动时注入。要调用模型时：
 
@@ -432,7 +432,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health check: `GET http://localhost:8000/api/health`
@@ -455,7 +455,7 @@ From a fresh clone, at the repository root (Python and Node are not required on 
 docker compose up --build -d --wait
 ```
 
-`make up` runs the same command. Open **http://localhost:8080**. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
+`make up` runs the same command. Open **http://localhost:8080**. Compose publishes the host port explicitly as `8080:80`. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend; the API container listens on `0.0.0.0:8000` inside the Docker network so nginx can reach it, and port 8000 is not published on the host. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
 
 Keys belong in `backend/.env` (gitignored) and are injected when the container starts. To call models:
 

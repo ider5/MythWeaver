@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # 浏览器跨域；勿与 allow_credentials 一起使用 *（会反射任意 Origin）
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # 本地与开发默认只监听回环。容器镜像另行传入 --host 0.0.0.0，
+    # 供同一 Docker 网络中的 nginx 访问；该端口不发布到宿主机。
+    bind_host: str = "127.0.0.1"
+
     # 续写篇幅：单次 max_tokens 上限、长章分段
     generation_max_tokens: int = 8000
     chapter_segment_threshold: int = 4500

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import close_db, init_db
 from app.routers import generation, novels, outline, providers, skills, story_bible, tasks
 from app.schemas.health import HealthOut
@@ -81,6 +81,21 @@ def create_app() -> FastAPI:
 
 def _wants_llm_probe(probe: str | None) -> bool:
     return (probe or "").strip().lower() in {"1", "true", "yes", "llm"}
+
+
+def local_uvicorn_options(settings: Settings | None = None) -> dict[str, object]:
+    """本地与开发进程的 uvicorn 参数。默认只监听 127.0.0.1。
+
+    容器不使用这里：镜像命令显式传入 ``--host 0.0.0.0``，
+    以便 Compose 网络中的 nginx 访问 ``backend:8000``。
+    """
+    resolved = settings if settings is not None else get_settings()
+    return {
+        "app": "app.main:app",
+        "host": resolved.bind_host,
+        "port": 8000,
+        "reload": True,
+    }
 
 
 app = create_app()
