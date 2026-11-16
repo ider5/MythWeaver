@@ -15,7 +15,7 @@ const actionError = ref('')
 const actionNote = ref('')
 const busyId = ref(0)
 const expandedId = ref<number | null>(null)
-const liveDetail = ref<Record<string, unknown> | null>(null)
+const liveDetail = ref<Task | null>(null)
 const linkState = ref<'live' | 'reconnecting' | 'off'>('off')
 let timer = 0
 let stopLive: (() => void) | null = null
