@@ -16,6 +16,7 @@ services:
       DEBUG: "false"
     volumes:
       - mythweaver-data:/data
+    # 不把 8000 发布到宿主机。进程在容器内监听 0.0.0.0，供同网络的 nginx 访问。
     expose:
       - "8000"
     healthcheck:
@@ -30,6 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+    # 宿主机端口发布保持显式：8080 -> 容器 80。
     ports:
       - "8080:80"
     depends_on:
