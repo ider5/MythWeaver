@@ -29,6 +29,9 @@ const writebackToken = ref(0)
 const writebackReload = ref(0)
 const versions = ref<any[]>([])
 const activeVersionId = ref<number | null>(null)
+const compareOpen = ref(false)
+const compareA = ref<number | null>(null)
+const compareB = ref<number | null>(null)
 const error = ref('')
 const deleting = ref(false)
 const deletingChapter = ref(false)
@@ -188,6 +191,59 @@ function versionLabel(t: string) {
   if (t === 'critic_revised') return 'Critic'
   if (t === 'user_edited') return '修订'
   return t
+}
+
+function versionById(id: number | null) {
+  if (id == null) return null
+  return versions.value.find((v) => v.id === id) || null
+}
+
+/** 简易按行 diff（Myers 子集：LCS 回溯），足够章节对照。 */
+function lineDiff(aText: string, bText: string) {
+  const a = (aText || '').split('\n')
+  const b = (bText || '').split('\n')
+  const n = a.length
+  const m = b.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const rows: { type: 'same' | 'del' | 'add'; text: string }[] = []
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      rows.push({ type: 'same', text: a[i] })
+      i++
+      j++
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      rows.push({ type: 'del', text: a[i++] })
+    } else {
+      rows.push({ type: 'add', text: b[j++] })
+    }
+  }
+  while (i < n) rows.push({ type: 'del', text: a[i++] })
+  while (j < m) rows.push({ type: 'add', text: b[j++] })
+  return rows
+}
+
+const compareRows = computed(() => {
+  const left = versionById(compareA.value)
+  const right = versionById(compareB.value)
+  if (!left || !right) return []
+  return lineDiff(String(left.content || ''), String(right.content || ''))
+})
+
+function openCompare() {
+  if (versions.value.length < 2) return
+  compareOpen.value = true
+  const ids = versions.value.map((v) => v.id as number)
+  compareA.value = activeVersionId.value && ids.includes(activeVersionId.value)
+    ? activeVersionId.value
+    : ids[0]
+  compareB.value = ids.find((id) => id !== compareA.value) ?? ids[ids.length - 1]
 }
 
 function severityClass(s: string) {
@@ -928,6 +984,15 @@ onUnmounted(() => {
             >
               {{ versionLabel(v.version_type) }}
             </button>
+            <button
+              v-if="versions.length >= 2"
+              type="button"
+              class="btn-ghost btn-sm"
+              :disabled="reviseBusy"
+              @click="openCompare"
+            >
+              对照
+            </button>
           </div>
           <span class="meta tabular">{{ displayChars ? `${displayChars} 字` : '还是空的' }}</span>
         </div>
@@ -946,6 +1011,34 @@ onUnmounted(() => {
             placeholder="生成的正文会出现在这里，可以直接改。"
             :disabled="reviseBusy"
           />
+        </div>
+        <div v-if="compareOpen && versions.length >= 2" class="wb-diff" aria-label="版本对照">
+          <div class="wb-diff__bar">
+            <label class="wb-diff__pick">
+              左
+              <select v-model.number="compareA">
+                <option v-for="v in versions" :key="`a-${v.id}`" :value="v.id">
+                  #{{ v.id }} {{ versionLabel(v.version_type) }}
+                </option>
+              </select>
+            </label>
+            <label class="wb-diff__pick">
+              右
+              <select v-model.number="compareB">
+                <option v-for="v in versions" :key="`b-${v.id}`" :value="v.id">
+                  #{{ v.id }} {{ versionLabel(v.version_type) }}
+                </option>
+              </select>
+            </label>
+            <button type="button" class="btn-ghost btn-sm" @click="compareOpen = false">关闭</button>
+          </div>
+          <pre class="wb-diff__body" tabindex="0"><span
+              v-for="(row, idx) in compareRows"
+              :key="idx"
+              class="wb-diff__line"
+              :class="`wb-diff__line--${row.type}`"
+            >{{ row.text || ' ' }}
+</span></pre>
         </div>
       </div>
 
