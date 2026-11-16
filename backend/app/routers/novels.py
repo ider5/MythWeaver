@@ -155,7 +155,12 @@ async def update_novel(novel_id: int, body: NovelUpdate, session: AsyncSession =
     novel = await session.get(Novel, novel_id)
     if not novel:
         raise HTTPException(404, "小说不存在")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    # 用途只能在导入时选定；中途改 role 会绕过导出/续写护栏。
+    if "role" in updates and updates["role"] != novel.role:
+        raise HTTPException(400, "不能通过编辑修改用途；请新建原稿或参考书")
+    updates.pop("role", None)
+    for k, v in updates.items():
         setattr(novel, k, v)
     await session.commit()
     await session.refresh(novel)

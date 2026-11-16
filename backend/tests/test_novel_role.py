@@ -118,14 +118,16 @@ async def test_import_defaults_to_manuscript_and_lists_by_role(client):
         f"/api/novels/{manuscript['id']}",
         json={"role": "reference"},
     )
-    assert patched.status_code == 200
-    assert patched.json()["role"] == "reference"
-    # 改回原稿，后面的导出用例另建数据
-    back = await client.patch(
+    assert patched.status_code == 400
+    assert "用途" in patched.json()["detail"]
+    # 其它字段仍可改
+    titled = await client.patch(
         f"/api/novels/{manuscript['id']}",
-        json={"role": "manuscript"},
+        json={"title": "原稿改名"},
     )
-    assert back.json()["role"] == "manuscript"
+    assert titled.status_code == 200
+    assert titled.json()["role"] == "manuscript"
+    assert titled.json()["title"] == "原稿改名"
 
 
 @pytest.mark.asyncio

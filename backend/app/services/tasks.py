@@ -575,21 +575,37 @@ class TaskQueue:
 
 
 async def fail_interrupted_tasks(session: AsyncSession) -> int:
-    """进程重启后把未完成任务标为失败，避免 SSE 轮询永久卡住。"""
+    """进程重启后把未完成任务标为失败，并清掉卡在 generating 的书/大纲条目。
+
+    SSE 续写不是 AsyncTask；若不复位，重启后 novels/outline_items 会一直 generating。
+    """
+    from app.models import Novel, OutlineItem
+
     rows = (
         await session.execute(
             select(AsyncTask).where(AsyncTask.status.in_(("pending", "running")))
         )
     ).scalars().all()
-    if not rows:
-        return 0
     for task in rows:
         task.status = "failed"
         task.error = "interrupted by restart"
         task.message = "进程重启，任务已中断"
         await _release_ingest_novel(session, task)
+
+    stuck_novels = (
+        await session.execute(select(Novel).where(Novel.status == "generating"))
+    ).scalars().all()
+    for novel in stuck_novels:
+        novel.status = "ready"
+
+    stuck_items = (
+        await session.execute(select(OutlineItem).where(OutlineItem.status == "generating"))
+    ).scalars().all()
+    for item in stuck_items:
+        item.status = "pending"
+
     await session.commit()
-    return len(rows)
+    return len(rows) + len(stuck_novels) + len(stuck_items)
 
 
 _queue: TaskQueue | None = None

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { novelsApi, tasksApi, type Novel, type Task } from '@/api'
 
@@ -81,18 +81,48 @@ function statusTone(s?: string) {
   return 'status-pill--idle'
 }
 
-onMounted(async () => {
-  const { data } = await novelsApi.get(id.value)
-  novel.value = data
-  await refreshActiveTasks()
+function startTaskPoll() {
+  if (taskPoll) return
   taskPoll = window.setInterval(() => {
     if (document.visibilityState === 'hidden') return
     refreshActiveTasks()
   }, 2500)
+}
+
+function stopTaskPoll() {
+  if (taskPoll) {
+    window.clearInterval(taskPoll)
+    taskPoll = 0
+  }
+}
+
+async function refreshNovelMeta() {
+  try {
+    const { data } = await novelsApi.get(id.value)
+    novel.value = data
+  } catch {
+    /* ignore */
+  }
+}
+
+onMounted(async () => {
+  await refreshNovelMeta()
+  await refreshActiveTasks()
+  startTaskPoll()
+})
+
+onActivated(async () => {
+  await refreshNovelMeta()
+  await refreshActiveTasks()
+  startTaskPoll()
+})
+
+onDeactivated(() => {
+  stopTaskPoll()
 })
 
 onUnmounted(() => {
-  if (taskPoll) window.clearInterval(taskPoll)
+  stopTaskPoll()
 })
 </script>
 

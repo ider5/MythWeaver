@@ -223,6 +223,10 @@ async def stream_generate_chapter(
     if outline is None or outline.novel_id != novel_id:
         yield {"event": "error", "message": "大纲条目不属于该小说"}
         return
+    # 拒绝并行 SSE：已在生成中则直接失败（连续生成任务会串行调用本函数，章与章之间会清掉 generating）。
+    if item.status == "generating" or novel.status == "generating":
+        yield {"event": "error", "message": "已有生成进行中，请结束后再试"}
+        return
 
     finished = False
     try:
