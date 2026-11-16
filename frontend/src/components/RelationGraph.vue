@@ -175,7 +175,7 @@ function edgeText(edge: LaidEdge) {
   display: block;
   color: var(--ink-muted);
   font-family: var(--font-ui);
-  background: radial-gradient(460px 220px at 50% 46%, rgba(26, 92, 78, 0.07), transparent 70%);
+  background: radial-gradient(460px 220px at 50% 46%, var(--accent-soft), transparent 70%);
 }
 
 .rel-edge path {
