@@ -396,6 +396,10 @@ class MockLLMClient(LLMClient):
                             "order": 1,
                             "title": "第四章 秘境",
                             "summary": "叶凡进入秘境",
+                            "purpose": "拿到秘境地图",
+                            "conflict": "守门傀儡拦路，玉佩突然反噬",
+                            "suspense_hook": "地图背面写着苏婉的名字",
+                            "characters": ["叶凡", "守门傀儡"],
                             "key_points": ["遇怪", "玉佩共鸣"],
                         }
                     ],

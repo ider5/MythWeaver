@@ -39,6 +39,33 @@ BUDGET = {
 }
 
 
+def outline_character_names(outline_item: OutlineItem) -> list[str]:
+    """出场人物。兼容旧数据里的空值或单个字符串。"""
+    raw = outline_item.characters or []
+    if isinstance(raw, str):
+        raw = [raw]
+    names: list[str] = []
+    for item in raw:
+        name = str(item).strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def outline_item_query(outline_item: OutlineItem) -> str:
+    """检索查询：标题、概要、要点，以及蓝图里的目标、冲突、悬念和出场人物。"""
+    parts = [
+        outline_item.title or "",
+        outline_item.summary or "",
+        outline_item.purpose or "",
+        outline_item.conflict or "",
+        outline_item.suspense_hook or "",
+        "\n".join(outline_item.key_points or []),
+        " ".join(outline_character_names(outline_item)),
+    ]
+    return "\n".join(part for part in parts if str(part).strip())
+
+
 def _chapter_block(ch, content: str, *, tail: bool) -> str:
     title = getattr(ch, "title", None) or ""
     label = f"### {title}（章尾）" if tail else f"### {title}"
@@ -144,7 +171,7 @@ async def build_context(
     ).scalars().all()
 
     # RAG
-    query = f"{outline_item.title}\n{outline_item.summary}\n" + "\n".join(outline_item.key_points or [])
+    query = outline_item_query(outline_item)
     exclude = {c.id for c in recent}
     rag_hits = await hybrid_search(session, novel.id, query, top_k=8, exclude_chapter_ids=exclude)
 

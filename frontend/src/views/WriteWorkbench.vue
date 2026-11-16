@@ -645,6 +645,12 @@ onUnmounted(() => {
       <div v-if="selected" class="panel p-5 text-sm">
         <div class="font-medium">{{ selected.title }}</div>
         <div class="mt-1" style="color: var(--ink-muted)">{{ selected.summary }}</div>
+        <p v-if="selected.purpose" class="mt-1 meta">目标：{{ selected.purpose }}</p>
+        <p v-if="selected.conflict" class="mt-1 meta">冲突：{{ selected.conflict }}</p>
+        <p v-if="selected.suspense_hook" class="mt-1 meta">悬念：{{ selected.suspense_hook }}</p>
+        <p v-if="(selected.characters || []).length" class="mt-1 meta">
+          出场：{{ (selected.characters || []).join('、') }}
+        </p>
         <ul v-if="(selected.key_points || []).length" class="mt-2 list-disc pl-5 meta space-y-0.5">
           <li v-for="(p, i) in selected.key_points || []" :key="i">{{ p }}</li>
         </ul>

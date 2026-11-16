@@ -161,6 +161,10 @@ async function save() {
         title: i.title,
         summary: i.summary,
         key_points: i.key_points,
+        purpose: i.purpose || '',
+        conflict: i.conflict || '',
+        suspense_hook: i.suspense_hook || '',
+        characters: i.characters || [],
         status: i.status,
       })),
     })
@@ -318,6 +322,29 @@ onUnmounted(() => closeGenerateEs())
           <input v-model="item.title" class="input" @change="updateItem(item, 'title', item.title)" />
         </div>
         <textarea v-model="item.summary" class="textarea textarea-sm" rows="3" />
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label class="label">主角小目标</label>
+            <textarea v-model="item.purpose" class="textarea textarea-sm" rows="2" />
+          </div>
+          <div>
+            <label class="label">冲突与转折</label>
+            <textarea v-model="item.conflict" class="textarea textarea-sm" rows="2" />
+          </div>
+        </div>
+        <div>
+          <label class="label">悬念钩子</label>
+          <textarea v-model="item.suspense_hook" class="textarea textarea-sm" rows="2" />
+        </div>
+        <div>
+          <label class="label">出场人物</label>
+          <input
+            class="input"
+            :value="(item.characters || []).join('；')"
+            placeholder="出场人物，用；分隔"
+            @change="item.characters = ($event.target as HTMLInputElement).value.split(/[；;、,，]/).map(s=>s.trim()).filter(Boolean)"
+          />
+        </div>
         <input
           class="input"
           :value="(item.key_points || []).join('；')"

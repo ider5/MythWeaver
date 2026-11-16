@@ -15,7 +15,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, ChapterVersion, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services.consistency import run_critic_loop
-from app.services.context_builder import build_context
+from app.services.context_builder import build_context, outline_character_names
 from app.services.chapter_length import (
     ending_slice,
     estimate_generation_max_tokens,
@@ -263,6 +263,10 @@ async def stream_generate_chapter(
                 chapter_title=item.title,
                 chapter_summary=item.summary,
                 key_points=item.key_points or [],
+                chapter_purpose=item.purpose or "",
+                chapter_conflict=item.conflict or "",
+                chapter_suspense=item.suspense_hook or "",
+                chapter_characters=outline_character_names(item),
                 target_chars=resolved_target,
                 is_segment=segmented,
                 segment_index=seg.index,

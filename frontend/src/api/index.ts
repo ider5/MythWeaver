@@ -88,6 +88,10 @@ export interface OutlineItem {
   title: string
   summary: string
   key_points: string[]
+  purpose: string
+  conflict: string
+  suspense_hook: string
+  characters: string[]
   status: string
 }
 

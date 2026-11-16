@@ -38,3 +38,7 @@ def test_normalize_outline_items_from_39_starts_at_40():
     assert [i["order"] for i in items] == [1, 2, 3]
     assert items[0]["summary"] == "a"
     assert items[0]["key_points"] == ["x"]
+    assert items[0]["purpose"] == ""
+    assert items[0]["conflict"] == ""
+    assert items[0]["suspense_hook"] == ""
+    assert items[0]["characters"] == []

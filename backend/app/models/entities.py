@@ -212,6 +212,11 @@ class OutlineItem(Base):
     title: Mapped[str] = mapped_column(String(256), default="")
     summary: Mapped[str] = mapped_column(Text, default="")
     key_points: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # 章节蓝图（对齐 Pagekin）：旧行缺省为空，不替代 title/summary。
+    purpose: Mapped[str] = mapped_column(Text, default="", nullable=False)  # 主角小目标
+    conflict: Mapped[str] = mapped_column(Text, default="", nullable=False)  # 冲突与转折
+    suspense_hook: Mapped[str] = mapped_column(Text, default="", nullable=False)  # 悬念钩子
+    characters: Mapped[list[str]] = mapped_column(JSON, default=list)  # 出场人物
     status: Mapped[str] = mapped_column(String(32), default="pending")  # pending|generating|done
 
     outline: Mapped[Outline] = relationship(back_populates="items")
