@@ -19,6 +19,7 @@ from app.llm.prompts import render
 from app.models import Chapter, Novel, StyleSample, Summary
 from app.services import story_bible as bible_svc
 from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.novel_role import normalize_role
 from app.services.retrieval import embed_and_store, embed_and_store_batch
 from app.services.tasks import TaskProgress, get_task_queue
 from app.utils.chinese_text import (
@@ -107,6 +108,7 @@ async def confirm_import(
     title: str | None = None,
     author: str | None = None,
     genre: str = "玄幻",
+    role: str = "manuscript",
 ) -> Novel:
     data = pop_import(import_token)
     if data is None:
@@ -117,6 +119,7 @@ async def confirm_import(
         title=title or data.get("title") or "未命名小说",
         author=author,
         genre=genre,
+        role=normalize_role(role),
         status="imported",
         total_chars=sum(c.char_count for c in chapters),
         chapter_count=len(chapters),

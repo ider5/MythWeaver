@@ -29,6 +29,10 @@ class Novel(Base):
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     author: Mapped[Optional[str]] = mapped_column(String(128))
     genre: Mapped[str] = mapped_column(String(64), default="玄幻")  # 玄幻/都市/言情
+    # manuscript=原稿（默认可续写、可导出）；reference=参考（只拆文风/设定）
+    role: Mapped[str] = mapped_column(
+        String(16), default="manuscript", server_default="manuscript"
+    )
     description: Mapped[Optional[str]] = mapped_column(Text)
     source_path: Mapped[Optional[str]] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(32), default="imported")

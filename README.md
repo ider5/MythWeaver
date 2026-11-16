@@ -90,11 +90,28 @@ docker compose up --build
 
 ## 基本使用流程
 
-1. **导入**：上传小说文本（或目录），预览分章后确认入库
+1. **导入**：先选「原稿」或「参考」，再上传文本（或目录），预览分章后确认入库
 2. **入库**：触发摘要 / 实体 / 向量化任务，等待 SSE 进度完成
 3. **Story Bible**：检查并修正人物、世界观、伏笔
 4. **大纲**：生成大纲 → 编辑 → 确认
 5. **续写**：按大纲条目流式生成 → 查看一致性报告 → 人工修订 → 确认入库（增量更新知识库）
+
+## 原稿与参考
+
+导入确认时写入 `role`。已有书和未传该字段的请求默认为 `manuscript`。旧库启动时自动补上 `novels.role`。
+
+| `role` | 用途 |
+|---|---|
+| `manuscript` | 原稿。可入库、大纲、续写，并可导出为 txt/md 成书。列表默认只显示这一类。 |
+| `reference` | 仿写参考。仍会入库，抽出 Story Bible 与文风样本；**不**进入默认续写列表，**不能**作为章节生成来源，**不能**导出为书。参考章节不会写进原稿正文。 |
+
+接口约定：
+
+- `POST /api/novels`、`PATCH /api/novels/{id}`、`POST /api/novels/import/confirm` 接受 `role`：`manuscript` 或 `reference`
+- `GET /api/novels?role=manuscript` 是续写的默认来源；`role=reference` 只返回参考本。不传 `role` 时返回全部
+- `GET /api/novels/{id}/export` 对参考本返回 **409**
+- `POST /api/novels/{id}/generate` 对参考本返回 **409**。`GET /api/novels/{id}/generate/stream` 返回 SSE `error`，不改小说状态、不写章节
+- `POST /api/novels/{id}/ingest` 对参考本仍然可用
 
 ## 配置说明
 

@@ -5,12 +5,16 @@ export const api = axios.create({
   timeout: 120000,
 })
 
+export type NovelRole = 'manuscript' | 'reference'
+
 export interface Novel {
   id: number
   title: string
   author?: string
   genre: string
   description?: string
+  /** manuscript=原稿，可续写导出；reference=参考，不进入正文 */
+  role?: NovelRole
   status: string
   total_chars: number
   chapter_count: number
@@ -105,7 +109,8 @@ export interface Outline {
 }
 
 export const novelsApi = {
-  list: () => api.get<Novel[]>('/novels'),
+  list: (role?: NovelRole) =>
+    api.get<Novel[]>('/novels', { params: role ? { role } : {} }),
   get: (id: number) => api.get<Novel>(`/novels/${id}`),
   remove: (id: number) => api.delete(`/novels/${id}`),
   /** 导出全书章节正文；format: txt（默认）| md */
@@ -120,6 +125,7 @@ export const novelsApi = {
     title?: string
     author?: string
     genre?: string
+    role?: NovelRole
   }) => api.post<Novel>('/novels/import/confirm', body),
   ingest: (id: number) => api.post<{ task_id: number }>(`/novels/${id}/ingest`),
   chapters: (id: number) =>

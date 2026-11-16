@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { novelsApi, outlineApi, tasksApi, type Novel, type Outline, type OutlineItem } from '@/api'
 import ProgressBar from '@/components/ProgressBar.vue'
 import { useRafText } from '@/composables/useRafText'
@@ -40,6 +40,8 @@ const previewError = ref('')
 const runCritic = ref(true)
 const maxCriticRounds = ref(2)
 const novelMeta = ref<Novel | null>(null)
+const novelLoaded = ref(false)
+const isReference = computed(() => novelMeta.value?.role === 'reference')
 /** 用户可覆盖的本章目标字数 */
 const targetChars = ref(3000)
 const targetTouched = ref(false)
@@ -348,11 +350,14 @@ async function loadNovelMeta() {
     }
   } catch {
     /* 均长展示失败不阻断续写 */
+  } finally {
+    novelLoaded.value = true
   }
 }
 
 async function load() {
   await loadNovelMeta()
+  if (isReference.value) return
   const { data } = await outlineApi.list(novelId)
   outlines.value = data
   const prevItemId = selected.value?.id
@@ -364,7 +369,7 @@ async function load() {
 }
 
 async function startGenerate() {
-  if (!selected.value) return
+  if (isReference.value || !selected.value) return
   invalidateLoadsAndStreams()
   const epoch = streamEpoch
   streaming.value = true
@@ -633,7 +638,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="grid lg:grid-cols-[16.5rem_minmax(0,1fr)] gap-6">
+  <div v-if="!novelLoaded" class="skeleton h-40" aria-busy="true" />
+  <div v-else-if="isReference" class="panel p-8 max-w-xl">
+    <div class="kicker mb-2">参考</div>
+    <h2 class="font-display text-2xl">不会进入续写</h2>
+    <p class="page-desc mt-2">
+      这是参考小说。章节只用来拆文风和设定，不会变成可续写正文，也不能导出成书。
+    </p>
+    <RouterLink class="btn mt-5" :to="`/novels/${novelId}/bible`">查看拆解</RouterLink>
+  </div>
+  <div v-else class="grid lg:grid-cols-[16.5rem_minmax(0,1fr)] gap-6">
     <aside class="panel p-2.5 space-y-0.5 max-h-[calc(100vh-7rem)] overflow-auto lg:sticky lg:top-[4.5rem]">
       <div class="px-2 py-2 flex items-center justify-between">
         <span class="meta">大纲条目</span>

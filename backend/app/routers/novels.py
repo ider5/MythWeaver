@@ -30,6 +30,11 @@ from app.schemas.novel import (
 from app.services import ingestion
 from app.services.chapter_length import refresh_original_chapter_stats
 from app.services.consistency import critic_revise_selected
+from app.services.novel_role import (
+    REFERENCE_EXPORT_DETAIL,
+    is_reference_role,
+    normalize_role,
+)
 from app.services.generation import (
     delete_chapter,
     delete_chapter_version,
@@ -68,8 +73,19 @@ def _build_export_text(chapters: list[Chapter], fmt: str) -> str:
 
 
 @router.get("", response_model=list[NovelOut])
-async def list_novels(session: AsyncSession = Depends(get_session)):
-    rows = (await session.execute(select(Novel).order_by(Novel.id.desc()))).scalars().all()
+async def list_novels(
+    role: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """列出小说。`role=manuscript` 是续写默认来源；`reference` 不进入该列表。"""
+    stmt = select(Novel).order_by(Novel.id.desc())
+    if role is not None and role != "":
+        try:
+            role = normalize_role(role)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        stmt = stmt.where(Novel.role == role)
+    rows = (await session.execute(stmt)).scalars().all()
     return rows
 
 
@@ -130,6 +146,8 @@ async def export_novel(
     novel = await session.get(Novel, novel_id)
     if not novel:
         raise HTTPException(404, "小说不存在")
+    if is_reference_role(novel.role):
+        raise HTTPException(409, REFERENCE_EXPORT_DETAIL)
 
     chapters = (
         await session.execute(
@@ -176,6 +194,7 @@ async def import_confirm(body: ImportConfirmIn, session: AsyncSession = Depends(
             title=body.title,
             author=body.author,
             genre=body.genre,
+            role=body.role,
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e

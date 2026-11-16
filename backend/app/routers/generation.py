@@ -13,6 +13,7 @@ from app.db import get_session
 from app.models import Novel
 from app.schemas.generation import GenerateChapterIn
 from app.services.generation import stream_generate_chapter
+from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 from app.utils.sse import SSE_HEADERS, with_heartbeat
 
 router = APIRouter(prefix="/api/novels/{novel_id}/generate", tags=["generation"])
@@ -36,6 +37,8 @@ async def generate_chapter(
     novel = await session.get(Novel, novel_id)
     if not novel:
         raise HTTPException(404, "小说不存在")
+    if is_reference_role(novel.role):
+        raise HTTPException(409, REFERENCE_GENERATION_DETAIL)
 
     async def event_source():
         from app import db as db_mod
