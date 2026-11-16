@@ -385,6 +385,49 @@ export const configApi = {
   get: () => api.get('/config'),
 }
 
+export interface HealthCheck {
+  ok: boolean
+  detail: string
+}
+
+export interface HealthLlmStage {
+  stage: string
+  label: string
+  configured: boolean
+  provider: string
+  model: string
+  base_url: string
+}
+
+export interface HealthLlmCheck extends HealthCheck {
+  configured: boolean
+  probed: boolean
+  latency_ms?: number | null
+  reply?: string | null
+  stages: HealthLlmStage[]
+}
+
+export interface HealthReport {
+  status: 'ok' | 'degraded'
+  app: string
+  ready: boolean
+  first_run: boolean
+  novel_count: number
+  checks: {
+    api: HealthCheck
+    db: HealthCheck
+    llm: HealthLlmCheck
+  }
+}
+
+export const healthApi = {
+  get: (probe = false) =>
+    api.get<HealthReport>('/health', {
+      params: probe ? { probe: 'llm' } : {},
+      validateStatus: (status) => status === 200 || status === 503,
+    }),
+}
+
 export interface ProviderPreset {
   id: string
   label: string

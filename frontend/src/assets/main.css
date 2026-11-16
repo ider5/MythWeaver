@@ -570,6 +570,14 @@ select.input:focus {
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
 }
+.alert--warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 22%, var(--line));
+}
+.alert a {
+  margin-left: 0.35rem;
+}
 
 .metric {
   padding: 1.15rem 1.2rem;
@@ -861,6 +869,8 @@ input[type="radio"] {
 
 .btn:focus-visible,
 .btn-ghost:focus-visible,
+button.steps__item:focus-visible,
+a.path-card:focus-visible,
 .btn-danger:focus-visible,
 .tab-btn:focus-visible,
 .chip:focus-visible,
@@ -1001,6 +1011,12 @@ select.input {
 
 .steps__item--done {
   color: var(--ink);
+}
+
+button.steps__item {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .stat-row {
@@ -1195,6 +1211,27 @@ input[type="checkbox"] {
   font-weight: 600;
   letter-spacing: -0.02em;
   cursor: pointer;
+}
+
+a.home-go {
+  text-decoration: none;
+}
+
+.home-note {
+  margin: 0.9rem 0 0;
+  font-size: 0.92rem;
+  color: var(--ink-muted);
+}
+
+.home-note a {
+  color: var(--accent);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.home-note a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .home-go--quiet {
@@ -1406,8 +1443,88 @@ input[type="checkbox"] {
   margin-top: 0.4rem;
 }
 
+.health-page {
+  max-width: 46rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.health-card {
+  padding: 0.9rem 1rem 1rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-muted);
+  border-radius: var(--radius);
+}
+
+.health-card--ok {
+  border-left-color: var(--accent);
+}
+
+.health-card--bad {
+  border-left-color: var(--danger);
+}
+
+.health-card--idle {
+  border-left-color: var(--ink-muted);
+}
+
+.health-card__label {
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--ink-muted);
+}
+
+.health-card__value {
+  margin-top: 0.3rem;
+  font-family: var(--font-prose);
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.health-card__detail {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+  word-break: break-word;
+}
+
+.first-run {
+  margin-bottom: 1.75rem;
+}
+
+.first-run__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.health-page .first-run__actions {
+  margin-top: 0;
+}
+
+.stage-url {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+
 @media (max-width: 640px) {
-  .create-split {
+  .create-split,
+  .health-grid {
     grid-template-columns: 1fr;
   }
 

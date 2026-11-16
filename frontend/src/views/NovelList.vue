@@ -1,14 +1,35 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { novelsApi, type Novel } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
+import FirstRun from '@/components/FirstRun.vue'
+import { useHealth } from '@/composables/useHealth'
+
+const DISMISS_KEY = 'mythweaver.firstRun.dismissed'
 
 const novels = ref<Novel[]>([])
 const loading = ref(true)
 const error = ref('')
 const filter = ref<'manuscript' | 'reference' | 'all'>('manuscript')
 const router = useRouter()
+const {
+  report: health,
+  loading: healthLoading,
+  error: healthError,
+  load: loadHealth,
+} = useHealth()
+
+function readDismissed() {
+  try {
+    return sessionStorage.getItem(DISMISS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const dismissed = ref(readDismissed())
+const seen = ref(false)
 
 function isReference(n: Novel) {
   return n.role === 'reference'
@@ -28,17 +49,43 @@ const visible = computed(() => {
 })
 
 async function load() {
-  loading.value = true
+  if (!seen.value) loading.value = true
   error.value = ''
+  const healthPromise = loadHealth()
   try {
     const { data } = await novelsApi.list()
     novels.value = data
   } catch (e: any) {
-    error.value = e?.message || '加载失败'
+    if (!novels.value.length) error.value = e?.message || '加载失败'
   } finally {
     loading.value = false
+    seen.value = true
+  }
+  await healthPromise
+}
+
+function dismissWizard() {
+  dismissed.value = true
+  try {
+    sessionStorage.setItem(DISMISS_KEY, '1')
+  } catch {
+    /* 隐私模式写不进 sessionStorage 时，本次仍收起引导 */
   }
 }
+
+const showWizard = computed(
+  () => !dismissed.value && !loading.value && !error.value && novels.value.length === 0,
+)
+const showKeyBanner = computed(
+  () =>
+    !loading.value &&
+    novels.value.length > 0 &&
+    !!health.value &&
+    !health.value.checks.llm.configured,
+)
+const needsModel = computed(
+  () => showWizard.value && !!health.value && !health.value.checks.llm.configured,
+)
 
 async function remove(n: Novel) {
   if (!confirm(`删除《${n.title}》？`)) return
@@ -94,7 +141,18 @@ function fmtNum(n: number) {
   return Number(n || 0).toLocaleString('zh-CN')
 }
 
-onMounted(load)
+let skipActivate = false
+onMounted(() => {
+  skipActivate = true
+  load()
+})
+onActivated(() => {
+  if (skipActivate) {
+    skipActivate = false
+    return
+  }
+  load()
+})
 </script>
 
 <template>
@@ -115,6 +173,9 @@ onMounted(load)
               <span class="home-go__mark" aria-hidden="true"></span>
             </button>
           </div>
+          <p v-if="needsModel" class="home-note">
+            <RouterLink to="/settings/providers?from=start">先接上模型</RouterLink>
+          </p>
         </div>
       </div>
       <div class="home-stage" aria-hidden="true">
@@ -124,6 +185,11 @@ onMounted(load)
     </section>
 
     <section class="home-shelf" aria-labelledby="shelf-title">
+      <p v-if="showKeyBanner" class="alert alert--warn mb-4">
+        续写模型还没配。
+        <RouterLink class="crumb" to="/settings/providers">去填写</RouterLink>
+        <RouterLink class="crumb" to="/settings/health">看状态</RouterLink>
+      </p>
       <div class="home-shelf__head">
         <h2 id="shelf-title" class="home-shelf__title">作品</h2>
         <button
@@ -174,6 +240,13 @@ onMounted(load)
         <div v-for="i in 3" :key="i" class="skeleton h-[4.75rem]" />
       </div>
       <p v-else-if="error" class="alert alert--danger">{{ error }}</p>
+      <FirstRun
+        v-else-if="showWizard"
+        :report="health"
+        :loading="healthLoading"
+        :error="healthError"
+        @dismiss="dismissWizard"
+      />
       <EmptyState
         v-else-if="!novels.length"
         title="书架还是空的"

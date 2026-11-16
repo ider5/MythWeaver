@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.routers import generation, novels, outline, providers, story_bible, tasks
+from app.schemas.health import HealthOut
+from app.services.health import collect_health
 from app.services.batch_generation import batch_generate_handler
 from app.services.ingestion import ingest_novel_handler
 from app.services.generation import revise_commit_handler
@@ -60,11 +62,24 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(providers.router)
 
-    @app.get("/api/health")
-    async def health():
-        return {"status": "ok", "app": settings.app_name}
+    @app.get("/api/health", response_model=HealthOut)
+    async def health(
+        response: Response,
+        probe: str | None = Query(
+            default=None,
+            description="传 llm、1 或 true 时，用已配置的续写密钥做一次连通探测",
+        ),
+    ):
+        report = await collect_health(probe_llm=_wants_llm_probe(probe))
+        if not report.checks.db.ok:
+            response.status_code = 503
+        return report
 
     return app
+
+
+def _wants_llm_probe(probe: str | None) -> bool:
+    return (probe or "").strip().lower() in {"1", "true", "yes", "llm"}
 
 
 app = create_app()

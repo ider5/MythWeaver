@@ -239,7 +239,7 @@ pytest
 
 常用入口：
 
-- `GET /api/health`、`GET /api/config`（含 `stage_routes`）
+- `GET /api/health`（接口、数据库、模型；`?probe=llm` 探测续写密钥）、`GET /api/config`（含 `stage_routes`）
 - `GET /api/providers`、`POST /api/providers/test`
 - `GET/POST /api/novels`，`POST /api/novels/import/preview` 与 `/confirm`，`POST /api/novels/{id}/ingest`，`GET /api/novels/{id}/export`
 - `/api/novels/{id}/bible`：人物、世界观、伏笔
@@ -485,7 +485,7 @@ CI is [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Pushes to `main` o
 
 Entry points:
 
-- `GET /api/health`, `GET /api/config` (includes `stage_routes`)
+- `GET /api/health` (API, database, model; `?probe=llm` checks the saved generation key), `GET /api/config` (includes `stage_routes`)
 - `GET /api/providers`, `POST /api/providers/test`
 - `GET/POST /api/novels`, `POST /api/novels/import/preview` and `/confirm`, `POST /api/novels/{id}/ingest`, `GET /api/novels/{id}/export`
 - `/api/novels/{id}/bible`: characters, world settings, plot threads

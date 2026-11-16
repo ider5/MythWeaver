@@ -4,7 +4,12 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 ## 健康检查
 
-- `GET /api/health` → `{ status, app }`
+- `GET /api/health` → `{ status, app, ready, first_run, novel_count, checks }`
+  - `checks.api` / `checks.db`：`ok`、`detail`。数据库不可读写时 HTTP 503，`status` 为 `degraded`。
+  - `checks.llm`：`ok`、`configured`、`probed`、`detail`、`latency_ms`、`reply`、`stages`（摘要 / 续写 / 向量的地址与模型，不含密钥）。`sk-your-*` 视为未配置；`anonymous` 视为已配置。
+  - 密钥未配置仍返回 200，避免空密钥把容器健康检查打失败。
+  - `?probe=llm`（也接受 `1` / `true`）用当前生效的续写密钥（已启用的配置，否则 `.env`）调用与 `POST /api/providers/test` 相同的探测。未配置时不发请求。
+  - `first_run`：没有书，或续写密钥未配置。
 
 ## 配置
 
