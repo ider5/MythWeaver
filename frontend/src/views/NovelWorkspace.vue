@@ -45,12 +45,12 @@ onMounted(async () => {
 
 <template>
   <div class="ws">
-    <header class="ws-head">
+    <header class="ws-head ws-head--visual">
       <div class="min-w-0">
         <div class="mb-2">
           <RouterLink to="/" class="crumb">作品</RouterLink>
           <span class="crumb-sep">/</span>
-          <span class="crumb">{{ isReference ? '参考台' : '续写台' }}</span>
+          <span class="crumb">{{ isReference ? '参考拆解' : '续写工作台' }}</span>
         </div>
         <h1 class="page-title truncate">{{ novel?.title || '…' }}</h1>
         <div class="page-desc tabular flex flex-wrap items-center gap-2">

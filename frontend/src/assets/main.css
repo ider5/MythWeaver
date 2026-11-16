@@ -3,31 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --bg: #efe8dc;
-  --bg-deep: #e4dccf;
-  --ink: #161411;
-  --ink-muted: #6e675c;
-  --accent: #1a5c4e;
-  --accent-hover: #14483d;
-  --accent-soft: rgba(26, 92, 78, 0.1);
-  --line: rgba(28, 25, 20, 0.1);
-  --line-strong: rgba(28, 25, 20, 0.16);
-  --panel: #fbf7f0;
-  --paper: #fffdf8;
+  --bg: #e7eef2;
+  --bg-deep: #d7e2e9;
+  --ink: #0f1a22;
+  --ink-muted: #5a6b78;
+  --accent: #0d7377;
+  --accent-hover: #095c5f;
+  --accent-soft: rgba(13, 115, 119, 0.12);
+  --line: rgba(15, 26, 34, 0.1);
+  --line-strong: rgba(15, 26, 34, 0.16);
+  --panel: #f4f8fa;
+  --paper: #fbfcfd;
   --danger: #b42318;
   --danger-soft: rgba(180, 35, 24, 0.08);
-  --warn: #9a6700;
-  --warn-soft: rgba(154, 103, 0, 0.12);
-  --ok: #1a5c4e;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow-sm: 0 1px 1px rgba(22, 20, 17, 0.04);
-  --shadow: 0 1px 1px rgba(22, 20, 17, 0.04), 0 10px 28px -12px rgba(22, 20, 17, 0.18);
-  --shadow-hover: 0 1px 1px rgba(22, 20, 17, 0.05), 0 16px 36px -14px rgba(22, 20, 17, 0.22);
-  --font-ui: "Source Sans 3", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
-    "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --font-prose: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong",
-    "SimSun", serif;
+  --warn: #a15c00;
+  --warn-soft: rgba(161, 92, 0, 0.12);
+  --ok: #0d7377;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 0 rgba(15, 26, 34, 0.04);
+  --shadow: 0 1px 0 rgba(15, 26, 34, 0.04), 0 12px 32px -18px rgba(15, 26, 34, 0.28);
+  --shadow-hover: 0 1px 0 rgba(15, 26, 34, 0.05), 0 18px 40px -18px rgba(15, 26, 34, 0.32);
+  --font-ui: "Manrope", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei", sans-serif;
+  --font-prose: "Fraunces", "Noto Serif SC", "Source Han Serif SC", "Songti SC",
+    serif;
 }
 
 html,
@@ -45,9 +45,9 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(1200px 520px at 12% -10%, rgba(26, 92, 78, 0.07), transparent 55%),
-    radial-gradient(900px 480px at 100% 0%, rgba(154, 103, 0, 0.05), transparent 50%),
-    var(--bg);
+    radial-gradient(1100px 520px at 8% -12%, rgba(13, 115, 119, 0.14), transparent 58%),
+    radial-gradient(900px 480px at 100% 0%, rgba(15, 26, 34, 0.06), transparent 52%),
+    linear-gradient(180deg, #eef4f7 0%, var(--bg) 42%, #e3ebf0 100%);
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.55;
@@ -1014,11 +1014,12 @@ input[type="checkbox"] {
 .home-hero::before {
   content: "";
   position: absolute;
-  inset: -20% -10% auto;
-  height: 18rem;
+  inset: -28% -12% auto;
+  height: 22rem;
   background:
-    radial-gradient(ellipse 70% 55% at 18% 40%, rgba(26, 92, 78, 0.14), transparent 70%),
-    radial-gradient(ellipse 55% 45% at 88% 20%, rgba(154, 103, 0, 0.08), transparent 65%);
+    radial-gradient(ellipse 72% 58% at 12% 42%, rgba(13, 115, 119, 0.2), transparent 70%),
+    radial-gradient(ellipse 50% 42% at 92% 18%, rgba(15, 26, 34, 0.08), transparent 62%),
+    linear-gradient(115deg, transparent 40%, rgba(13, 115, 119, 0.05) 100%);
   pointer-events: none;
   z-index: 0;
 }
@@ -1097,6 +1098,16 @@ input[type="checkbox"] {
   align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.ws-head--visual {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+  animation: home-rise 480ms ease both;
+}
+
+.ws-tabs {
+  animation: home-rise 560ms ease 40ms both;
 }
 
 @keyframes home-rise {
