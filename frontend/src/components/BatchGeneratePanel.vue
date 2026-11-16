@@ -28,6 +28,8 @@ const count = ref(2)
 const fromOrder = ref(1)
 const runCritic = ref(true)
 const running = ref(false)
+const stopping = ref(false)
+const activeTaskId = ref<number | null>(null)
 const failed = ref(false)
 const paused = ref(false)
 const progress = ref(0)
@@ -179,6 +181,19 @@ function watchTask(taskId: number) {
   }
 }
 
+async function stop() {
+  if (!activeTaskId.value || stopping.value) return
+  stopping.value = true
+  try {
+    const { data } = await tasksApi.cancel(activeTaskId.value)
+    applyTask(data)
+  } catch (err: any) {
+    errorText.value = err?.response?.data?.detail || err?.message || '取消失败'
+  } finally {
+    stopping.value = false
+  }
+}
+
 async function start() {
   if (!canStart.value || !props.outline) return
   running.value = true
@@ -201,6 +216,7 @@ async function start() {
       count: chapterCount.value,
       run_critic: runCritic.value,
     })
+    activeTaskId.value = data.task_id
     watchTask(data.task_id)
   } catch (err: any) {
     running.value = false
@@ -221,7 +237,7 @@ onUnmounted(() => closeEs())
         <h2 class="director__title">连续生成</h2>
       </div>
       <p class="meta director__hint">
-        从已确认大纲的某一序起，按顺序写 N 章。Critic 未通过或某一章失败就停下。暂不能中途取消。
+        从已确认大纲的某一序起，按顺序写 N 章。Critic 未通过、生成失败或停止时，下一章不再写。正在写的这一章会写完。
       </p>
     </div>
 
@@ -240,6 +256,9 @@ onUnmounted(() => closeEs())
       </label>
       <button class="btn" :disabled="!canStart" @click="start">
         {{ running ? '生成中…' : `连续生成 ${chapterCount} 章` }}
+      </button>
+      <button v-if="running" class="btn-ghost" type="button" :disabled="stopping" @click="stop">
+        {{ stopping ? '正在停下…' : '停止' }}
       </button>
     </div>
 

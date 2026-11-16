@@ -67,8 +67,8 @@ async def generate_batch(
 ):
     """入队连续生成。单章 SSE 接口不变。
 
-    当前没有任务取消 API：任务开始后会写完已经动手的那一章，
-    不能从这里中途掐掉。Critic 未通过或某一章生成失败时，后续章节不会再写。
+    取消用现有 `POST /api/tasks/{task_id}/cancel`。正在写的一章会写完，下一章不再开始。
+    Critic 未通过或某一章生成失败时，后续章节也不会再写。
     """
     try:
         task = await enqueue_batch_generate(

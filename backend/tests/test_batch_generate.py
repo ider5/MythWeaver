@@ -179,6 +179,51 @@ async def test_batch_pauses_when_critic_fails(client):
 
 
 @pytest.mark.asyncio
+async def test_batch_cancel_skips_the_next_chapter(client, monkeypatch):
+    from app.services import batch_generation as batch_mod
+
+    real = batch_mod.consume_generated_chapter
+
+    async def cancel_after_first(session, novel_id, outline_item_id, *, run_critic):
+        done = await real(session, novel_id, outline_item_id, run_critic=run_critic)
+        assert db_mod.SessionLocal
+        async with db_mod.SessionLocal() as session:
+            task = (
+                await session.execute(
+                    select(AsyncTask).where(
+                        AsyncTask.task_type == "batch_generate",
+                        AsyncTask.status.in_(("pending", "running")),
+                    )
+                )
+            ).scalars().first()
+            assert task is not None
+            task_id = task.id
+        async with db_mod.SessionLocal() as session:
+            await get_task_queue().cancel(session, task_id)
+        return done
+
+    monkeypatch.setattr(batch_mod, "consume_generated_chapter", cancel_after_first)
+    novel_id, outline_id = await _seed()
+    response = await client.post(
+        f"/api/novels/{novel_id}/generate/batch",
+        json={"outline_id": outline_id, "from_order": 1, "count": 2, "run_critic": False},
+    )
+    assert response.status_code == 200, response.text
+    task_id = response.json()["task_id"]
+    await get_task_queue().wait_task(task_id, timeout=60)
+
+    assert db_mod.SessionLocal
+    async with db_mod.SessionLocal() as session:
+        task = await session.get(AsyncTask, task_id)
+        assert task is not None
+        assert task.status == "cancelled", task.error
+        chapters = (
+            await session.execute(select(Chapter).where(Chapter.novel_id == novel_id))
+        ).scalars().all()
+        assert len(chapters) == 1
+
+
+@pytest.mark.asyncio
 async def test_batch_rejects_draft_outline_and_bad_range(client):
     novel_id, outline_id = await _seed(confirmed=False)
     draft = await client.post(

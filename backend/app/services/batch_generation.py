@@ -2,8 +2,8 @@
 
 复用 `stream_generate_chapter`，不改单章 SSE。进度写在 AsyncTask.result。
 
-取消：仓库里还没有任务取消 API，队列在处理器返回后也会把状态写成 completed。
-因此本任务不能中途取消；某一章生成失败，或 Critic 报告未通过时，停在下一章之前。
+取消走现有 `POST /api/tasks/{id}/cancel`。正在写的一章会写完，下一章开始前停下。
+某一章生成失败，或 Critic 报告未通过时，同样不再写后面的章。
 """
 
 from __future__ import annotations
@@ -253,23 +253,38 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
     if db_mod.SessionLocal is None:
         raise RuntimeError("数据库未初始化")
 
+    from app.services.tasks import TaskCancelled
+
     paused = False
     pause_reason: str | None = None
 
-    for index, row in enumerate(items):
-        row["status"] = "running"
-        row["message"] = "生成中"
-        pct = round(index / max(len(items), 1) * 100, 1)
-        snapshot = _snapshot(
+    def _current_snapshot(*, paused: bool = False, pause_reason: str | None = None) -> dict[str, Any]:
+        return _snapshot(
             novel_id=novel_id,
             outline_id=outline_id,
             from_order=from_order,
             count=count or len(items),
             run_critic=run_critic,
             items=items,
-            paused=False,
-            pause_reason=None,
+            paused=paused,
+            pause_reason=pause_reason,
         )
+
+    for index, row in enumerate(items):
+        if getattr(progress, "cancel_requested", False):
+            _block_rest(items, index, "已取消，后续不再生成")
+            await progress.update(
+                session,
+                status="cancelled",
+                message="已取消",
+                result=_current_snapshot(),
+            )
+            raise TaskCancelled("任务已取消")
+
+        row["status"] = "running"
+        row["message"] = "生成中"
+        pct = round(index / max(len(items), 1) * 100, 1)
+        snapshot = _current_snapshot()
         await progress.update(
             session,
             progress=max(pct, 1.0),
@@ -294,17 +309,7 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
             row["status"] = "failed"
             row["message"] = str(exc)
             _block_rest(items, index + 1, "前序章节生成失败，已停下")
-            failed = _snapshot(
-                novel_id=novel_id,
-                outline_id=outline_id,
-                from_order=from_order,
-                count=count or len(items),
-                run_critic=run_critic,
-                items=items,
-                paused=False,
-                pause_reason=None,
-            )
-            await progress.update(session, message=str(exc), result=failed)
+            await progress.update(session, message=str(exc), result=_current_snapshot())
             raise RuntimeError(row["message"]) from exc
 
         consistency = done.get("consistency") if isinstance(done.get("consistency"), dict) else None
@@ -321,6 +326,15 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
 
         row["status"] = "done"
         row["message"] = "已完成"
+        if getattr(progress, "cancel_requested", False):
+            _block_rest(items, index + 1, "已取消，后续不再生成")
+            await progress.update(
+                session,
+                status="cancelled",
+                message="已取消",
+                result=_current_snapshot(),
+            )
+            raise TaskCancelled("任务已取消")
 
     return _snapshot(
         novel_id=novel_id,
