@@ -78,10 +78,10 @@ onMounted(load)
   <div class="home">
     <section class="home-hero" aria-labelledby="home-brand">
       <p id="home-brand" class="home-brand">MythWeaver</p>
-      <h1 class="home-headline">把百万字原文，接着写下去</h1>
-      <p class="home-lede">导入 → 入库压缩 → 大纲确认 → 流式续写。参考小说只拆文风，不进正文。</p>
+      <h1 class="home-headline">长篇续写，压进一条清晰路径</h1>
+      <p class="home-lede">导入原稿或参考，入库压缩后确认大纲，再流式续写。界面只留必要动作。</p>
       <div class="home-cta">
-        <button class="btn" type="button" @click="router.push('/import')">导入小说</button>
+        <button class="btn" type="button" @click="router.push('/import')">导入续写</button>
         <button
           v-if="manuscriptNovels.length"
           class="btn-ghost"
