@@ -203,9 +203,12 @@ export const novelsApi = {
   }) => api.post<Novel>('/novels/scratch', body),
   seedScratch: (id: number) => api.post<ScratchSeed>(`/novels/${id}/scratch/seed`),
   remove: (id: number) => api.delete(`/novels/${id}`),
-  /** 导出全书章节正文；format: txt（默认）| md */
+  /** 导出全书章节正文；format: txt（默认）| md | epub */
   exportUrl: (id: number, format: 'txt' | 'md' | 'epub' = 'txt') =>
     `/api/novels/${id}/export?format=${format}`,
+  /** 下载这本小说的数据行 ZIP */
+  backupUrl: (id: number) => `/api/novels/${id}/backup`,
+  restoreBackup: (form: FormData) => api.post<Novel>('/novels/backup/restore', form),
   previewImport: (form: FormData) =>
     api.post<ImportPreview>('/novels/import/preview', form, {
       headers: { 'Content-Type': 'multipart/form-data' },

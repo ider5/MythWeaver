@@ -33,6 +33,7 @@ from app.services import ingestion
 from app.services import scratch as scratch_svc
 from app.services.chapter_length import refresh_original_chapter_stats, resolve_target_chars
 from app.services.epub_export import build_epub
+from app.services import novel_backup
 from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
 from app.services.quality_loop import assess_chapter_quality, list_open_threads
@@ -63,6 +64,21 @@ def _content_disposition(filename: str, ext: str) -> str:
     """ASCII fallback + RFC 5987，兼容中文书名。"""
     ascii_name = f"novel.{ext}"
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
+async def _read_backup_upload(file: UploadFile) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    limit = novel_backup.MAX_ZIP_BYTES
+    while True:
+        block = await file.read(1024 * 1024)
+        if not block:
+            break
+        total += len(block)
+        if total > limit:
+            raise HTTPException(413, f"备份包超过 {limit // (1024 * 1024)}MB")
+        chunks.append(block)
+    return b"".join(chunks)
 
 
 def _build_export_text(chapters: list[Chapter], fmt: str) -> str:
@@ -225,6 +241,35 @@ async def export_novel(
         media_type=media,
         headers={"Content-Disposition": _content_disposition(filename, fmt)},
     )
+
+
+@router.get("/{novel_id}/backup")
+async def download_novel_backup(novel_id: int, session: AsyncSession = Depends(get_session)):
+    """下载一本小说的数据行 ZIP。原稿和参考本都可以，不含任务与费用。"""
+    try:
+        payload, filename = await novel_backup.export_novel_zip(session, novel_id)
+    except novel_backup.BackupError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": _content_disposition(filename, "zip")},
+    )
+
+
+@router.post("/backup/restore", response_model=NovelOut)
+async def restore_novel_backup(
+    file: UploadFile = File(...),
+    title: str | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+):
+    """从 ZIP 恢复为一本新小说，不覆盖原书。"""
+    raw = await _read_backup_upload(file)
+    try:
+        novel = await novel_backup.restore_novel_zip(session, raw, title=title)
+    except novel_backup.BackupError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    return novel
 
 
 @router.post("/import/preview", response_model=ImportPreviewOut)

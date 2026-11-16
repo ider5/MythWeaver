@@ -11,6 +11,10 @@ const DISMISS_KEY = 'mythweaver.firstRun.dismissed'
 const novels = ref<Novel[]>([])
 const loading = ref(true)
 const error = ref('')
+const restoreError = ref('')
+const notice = ref('')
+const restoring = ref(false)
+const backupInput = ref<HTMLInputElement | null>(null)
 const filter = ref<'manuscript' | 'reference' | 'all'>('manuscript')
 const router = useRouter()
 const {
@@ -95,6 +99,41 @@ async function remove(n: Novel) {
 
 function exportNovel(n: Novel, format: 'txt' | 'md' | 'epub' = 'txt') {
   window.open(novelsApi.exportUrl(n.id, format), '_blank')
+}
+
+function downloadBackup(n: Novel) {
+  window.open(novelsApi.backupUrl(n.id), '_blank')
+}
+
+function pickBackup() {
+  backupInput.value?.click()
+}
+
+function restoreDetail(e: any): string {
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string' && detail) return detail
+  return e?.message || '恢复失败'
+}
+
+async function onBackupPicked(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  restoring.value = true
+  restoreError.value = ''
+  notice.value = ''
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await novelsApi.restoreBackup(form)
+    notice.value = `已从备份恢复为新作品《${data.title}》`
+    await load()
+  } catch (e: any) {
+    restoreError.value = restoreDetail(e)
+  } finally {
+    restoring.value = false
+  }
 }
 
 function openNovel(n: Novel) {
@@ -192,14 +231,32 @@ onActivated(() => {
       </p>
       <div class="home-shelf__head">
         <h2 id="shelf-title" class="home-shelf__title">作品</h2>
-        <button
-          v-if="manuscriptNovels.length"
-          class="home-resume"
-          type="button"
-          @click="openNovel(manuscriptNovels[0])"
-        >
-          打开最近一本
-        </button>
+        <div class="flex items-baseline gap-4">
+          <button
+            class="home-resume disabled:opacity-40"
+            type="button"
+            :disabled="restoring"
+            @click="pickBackup"
+          >
+            {{ restoring ? '恢复中…' : '恢复备份' }}
+          </button>
+          <button
+            v-if="manuscriptNovels.length"
+            class="home-resume"
+            type="button"
+            @click="openNovel(manuscriptNovels[0])"
+          >
+            打开最近一本
+          </button>
+          <input
+            ref="backupInput"
+            class="sr-only"
+            type="file"
+            accept=".zip,application/zip"
+            aria-label="选择作品备份 ZIP"
+            @change="onBackupPicked"
+          />
+        </div>
       </div>
 
       <div class="home-filter" role="tablist" aria-label="按用途筛选">
@@ -234,6 +291,9 @@ onActivated(() => {
           全部
         </button>
       </div>
+
+      <p v-if="notice" class="alert alert--ok mb-4">{{ notice }}</p>
+      <p v-if="restoreError" class="alert alert--danger mb-4">{{ restoreError }}</p>
 
       <div v-if="loading" class="space-y-3" aria-busy="true" aria-live="polite">
         <span class="sr-only">加载中…</span>
@@ -300,7 +360,7 @@ onActivated(() => {
               <span v-if="n.author">{{ n.author }}</span>
             </div>
           </div>
-          <div class="flex gap-2 shrink-0" @click.stop>
+          <div class="flex flex-wrap gap-2 shrink-0 justify-end" @click.stop>
             <button
               :class="isReference(n) ? 'btn-ghost' : 'btn'"
               type="button"
@@ -316,6 +376,14 @@ onActivated(() => {
               @click="exportNovel(n, 'txt')"
             >
               导出
+            </button>
+            <button
+              class="btn-ghost"
+              type="button"
+              title="下载 ZIP 备份，恢复时会成为一本新书"
+              @click="downloadBackup(n)"
+            >
+              备份
             </button>
             <button class="btn-danger" type="button" @click="remove(n)">删除</button>
           </div>

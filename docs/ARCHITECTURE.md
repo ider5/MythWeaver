@@ -34,6 +34,7 @@ frontend (Vue3)  --HTTP/SSE-->  backend (FastAPI)
 | `generation` | 单章流式生成、版本链、修订入库、递归记忆；`batch_generation` 按已确认大纲连续写最多 10 章。篇幅偏离、章末钩子缺失或 Critic 严重问题会暂停；警告继续 |
 | `quality_loop` | 生成后的轻量信号：文风样本对照、未回收伏笔与计划回收章、篇幅和章末钩子。不调用模型 |
 | `consistency` | 规则+LLM 校验，Critic 最多 2 轮 |
+| `novel_backup` | 单本 ZIP 行备份；恢复时新建小说，不含任务、费用和 WebDAV |
 
 ## 数据模型
 
@@ -43,7 +44,8 @@ Novel → Chapter → ChapterVersion（generated / critic_revised / user_edited�
 Novel → Summary（chapter / volume）  
 Novel → Character / WorldSetting / PlotThread  
 Novel → Outline → OutlineItem  
-AsyncTask / CostLog / RecurrentMemory / StyleSample
+AsyncTask / CostLog / RecurrentMemory / StyleSample / BibleProposal  
+单本 ZIP 备份导出内容行（含设定提案），恢复时新建小说并重写主键。任务、费用和 WebDAV 不在备份里。
 
 ## 生成回路
 
