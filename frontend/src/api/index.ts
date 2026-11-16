@@ -84,8 +84,8 @@ export interface PlotThread {
   description?: string
   thread_type: string
   status: string
-  introduced_chapter?: number
-  resolved_chapter?: number
+  introduced_chapter?: number | null
+  resolved_chapter?: number | null
 }
 
 export interface OutlineItem {

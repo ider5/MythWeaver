@@ -142,9 +142,12 @@ async def update_thread(
     row = await session.get(PlotThread, pt_id)
     if not row or row.novel_id != novel_id:
         raise HTTPException(404, "剧情线不存在")
+    # 章节字段允许显式 null，用来清掉出现/回收章；其它字段的 null 仍表示「不改」。
+    clearable = {"introduced_chapter", "resolved_chapter"}
     for k, v in body.model_dump(exclude_unset=True).items():
-        if v is not None:
-            setattr(row, k, v)
+        if v is None and k not in clearable:
+            continue
+        setattr(row, k, v)
     await session.commit()
     await session.refresh(row)
     return row
