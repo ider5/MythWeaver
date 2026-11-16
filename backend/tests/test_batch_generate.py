@@ -199,3 +199,16 @@ async def test_batch_rejects_draft_outline_and_bad_range(client):
         json={"outline_id": outline_id, "from_order": 1, "count": 11, "run_critic": False},
     )
     assert too_many.status_code == 422
+
+    novel_id, outline_id = await _seed()
+    assert db_mod.SessionLocal
+    async with db_mod.SessionLocal() as session:
+        novel = await session.get(Novel, novel_id)
+        assert novel is not None
+        novel.role = "reference"
+        await session.commit()
+    reference = await client.post(
+        f"/api/novels/{novel_id}/generate/batch",
+        json={"outline_id": outline_id, "from_order": 1, "count": 2, "run_critic": False},
+    )
+    assert reference.status_code == 409

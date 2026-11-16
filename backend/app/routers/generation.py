@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import Novel
 from app.schemas.generation import BatchGenerateIn, BatchGenerateTaskOut, GenerateChapterIn
-from app.services.batch_generation import BatchNotFound, enqueue_batch_generate
+from app.services.batch_generation import BatchConflict, BatchNotFound, enqueue_batch_generate
 from app.services.generation import stream_generate_chapter
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 from app.utils.sse import SSE_HEADERS, with_heartbeat
@@ -81,6 +81,8 @@ async def generate_batch(
         )
     except BatchNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
+    except BatchConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return BatchGenerateTaskOut(task_id=task.id, status=task.status)

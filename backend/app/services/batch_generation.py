@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AsyncTask, Novel, Outline, OutlineItem
 from app.services.generation import resolve_target_chapter_index, stream_generate_chapter
+from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ BATCH_TASK_TYPE = "batch_generate"
 
 class BatchNotFound(ValueError):
     """小说或大纲不存在。"""
+
+
+class BatchConflict(ValueError):
+    """请求与当前小说角色或进行中的生成冲突。"""
 
 
 def critic_gate_reason(consistency: dict[str, Any] | None, *, run_critic: bool) -> str | None:
@@ -119,6 +124,8 @@ async def plan_batch_items(
     novel = await session.get(Novel, novel_id)
     if novel is None:
         raise BatchNotFound("小说不存在")
+    if is_reference_role(novel.role):
+        raise BatchConflict(REFERENCE_GENERATION_DETAIL)
     outline = await session.get(Outline, outline_id)
     if outline is None or outline.novel_id != novel_id:
         raise BatchNotFound("大纲不存在")
