@@ -310,7 +310,27 @@ async def run_critic_loop(
     """返回 (正文, 终检报告, 初检报告)。
 
     初检报告对应进入 Critic 前的草稿；若未改写，初检与终检相同。
+    默认经 LangGraph 编排（`AGENT_RUNTIME=langgraph`）；可回退 legacy。
     """
+    from app.config import get_settings
+
+    if get_settings().agent_runtime == "langgraph":
+        from app.agents.critic_graph import run_critic_loop_langgraph
+
+        async def _check(text: str, *, recent_tail: str = "") -> ConsistencyReport:
+            return await check_consistency(session, novel, text, recent_tail=recent_tail)
+
+        async def _revise(text: str, report: ConsistencyReport) -> tuple[str, ConsistencyReport]:
+            return await critic_revise(session, novel, text, report)
+
+        return await run_critic_loop_langgraph(
+            content=content,
+            recent_tail=recent_tail,
+            max_rounds=max_rounds,
+            check_fn=_check,
+            revise_fn=_revise,
+        )
+
     report = await check_consistency(session, novel, content, recent_tail=recent_tail)
     report.critic_rounds = 0
     initial = report.model_copy(deep=True)

@@ -8,6 +8,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["openai", "anthropic"]
+AgentRuntime = Literal["langgraph", "legacy"]
 
 # backend/ 目录
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -75,6 +76,9 @@ class Settings(BaseSettings):
     segment_max_tokens: int = 8000
     chapter_length_min: int = 1500
     chapter_length_max: int = 30000
+
+    # Agent 编排：langgraph（默认）| legacy 手写回路
+    agent_runtime: AgentRuntime = "langgraph"
 
     # 成本单价 USD / 1M tokens
     cost_summary_input: float = 0.15

@@ -17,6 +17,7 @@
 | 后端 | Python 3.11+、FastAPI、Uvicorn、Pydantic v2 |
 | 数据 | SQLite（WAL）+ SQLAlchemy 2.0 async + sqlite-vec |
 | LLM | OpenAI / Anthropic 官方 SDK（自定义 `base_url`），进程内 asyncio 任务队列 |
+| Agent | **LangGraph** 编排 Critic 回路（`AGENT_RUNTIME=langgraph`，可回退 `legacy`） |
 | 前端 | Vue 3、TypeScript、Vite、Pinia、TailwindCSS |
 | 测试 | pytest、pytest-asyncio、httpx |
 

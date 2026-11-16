@@ -10,9 +10,17 @@ MythWeaver 是单机部署的网络小说自动续写系统。通过分层摘要
 frontend (Vue3)  --HTTP/SSE-->  backend (FastAPI)
                                    ├── routers
                                    ├── services（入库/上下文/大纲/生成/校验）
+                                   ├── agents（LangGraph Critic 等编排）
                                    ├── llm（双协议客户端）
                                    └── SQLite + sqlite-vec
 ```
+
+## Agent runtime
+
+- 默认使用 **LangGraph** 编排一致性 Critic 回路（`check` → 条件 `revise`），模块：`backend/app/agents/`
+- 环境变量 `AGENT_RUNTIME=langgraph|legacy`（默认 `langgraph`）；legacy 保留原手写循环便于回滚
+- FastAPI / SSE 对外契约不变；流式正文生成仍在 `services.generation`，后续可继续节点化
+- 选型说明见 Project Context：`docs/agent-stack-roadmap.md`
 
 ## 核心模块
 
