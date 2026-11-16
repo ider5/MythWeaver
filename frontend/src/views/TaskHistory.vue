@@ -282,7 +282,13 @@ onUnmounted(() => {
     <p v-else-if="actionNote" class="alert alert--ok hub-alert" role="status">{{ actionNote }}</p>
 
     <ul v-if="tasks.length" class="hub-list">
-      <li v-for="t in tasks" :key="t.id" class="hub-row" :class="rowClass(t)">
+      <li
+        v-for="(t, index) in tasks"
+        :key="t.id"
+        class="hub-row"
+        :class="rowClass(t)"
+        :style="{ '--i': Math.min(index, 8) }"
+      >
         <div class="hub-row__main">
           <div class="hub-id">
             <span class="hub-type">{{ typeLabel(t.task_type) }}</span>
