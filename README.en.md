@@ -124,7 +124,7 @@ MythWeaver/
 - Python **3.11+**
 - Node.js 18+ for the local frontend (CI uses Node 20)
 - An LLM API (OpenAI-compatible and/or Anthropic)
-- Docker Compose for the self-host path
+- Docker Compose v2.24+ for the self-host path (`docker compose`)
 
 ## Quick start
 
@@ -135,7 +135,7 @@ cd backend
 cp .env.example .env          # Windows: copy .env.example .env
 ```
 
-Edit `backend/.env`. Set `API_KEY`, `BASE_URL`, and model names for summary, generation, and embedding. Do not commit real keys.
+Edit `backend/.env`. Set `API_KEY`, `BASE_URL`, and model names for summary, generation, and embedding. Do not commit real keys. The local backend reads this file. For the Docker path in step 4, keys can be added later.
 
 ### 2. Backend
 
@@ -162,22 +162,51 @@ Open the URL Vite prints (default `http://localhost:5173`). In dev, `/api` is pr
 
 ### 4. Package and one-command deploy
 
-Prepare `backend/.env` first. Keys stay in that file; they are not baked into the image.
+From a fresh clone, at the repository root (Python and Node are not required on the host):
 
 ```bash
-make up      # docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
-Open **http://localhost:8080**. nginx proxies `/api` to the backend. Data lives in the `mythweaver-data` volume. The frontend waits until `/api/health` succeeds. `make down` stops the stack.
+`make up` runs the same command. Open **http://localhost:8080**. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
 
-Build images only (Docker required, and `backend/.env` must exist):
+Keys belong in `backend/.env` (gitignored) and are injected when the container starts. To call models:
+
+```bash
+cp backend/.env.example backend/.env
+# recreate so the new environment is applied
+docker compose up -d --force-recreate --wait
+```
+
+With no `backend/.env`, the UI still opens. `/api/health` returns HTTP 200 when the database is writable; `ready` stays false until a generation key is set.
+
+Compose sets these and overrides the same names in `.env`:
+
+| Variable | Value | Role |
+|---|---|---|
+| `DATA_DIR` | `/data` | Database and import backups, volume `mythweaver-data` |
+| `CORS_ORIGINS` | `http://localhost:8080` and `127.0.0.1:8080` | Browser origins. Same-origin use through nginx does not depend on CORS |
+| `DEBUG` | `false` | Turns off SQL echo |
+
+Set these in `backend/.env` before calling models (`sk-your-*` placeholders count as unset):
+
+| Use | Variables |
+|---|---|
+| Summary / extract | `SUMMARY_PROVIDER`, `SUMMARY_BASE_URL`, `SUMMARY_API_KEY`, `SUMMARY_MODEL` |
+| Outline / continuation | `GENERATION_PROVIDER`, `GENERATION_BASE_URL`, `GENERATION_API_KEY`, `GENERATION_MODEL` |
+| Embeddings | `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMS` |
+
+`SUMMARY_PROVIDER` / `GENERATION_PROVIDER` are `openai` or `anthropic`. Concurrency, length, and prices are in `backend/.env.example`; omitted values use the code defaults. Named model profiles are stored in the SQLite file on the data volume.
+
+Requires Docker Compose v2.24+.
+
+Build images only:
 
 ```bash
 make package                  # ./scripts/package.sh docker
-docker compose up -d
 ```
 
-Frontend static files only (serve them yourself and proxy `/api` to backend port 8000):
+Frontend static files only (serve them yourself and proxy `/api` to `127.0.0.1:8000`):
 
 ```bash
 make dist                     # ./scripts/package.sh dist
@@ -186,7 +215,7 @@ make dist                     # ./scripts/package.sh dist
 
 ## Configuration
 
-Settings live in `backend/.env`. The template is `backend/.env.example`.
+Settings live in `backend/.env`. The template is `backend/.env.example`. Docker reads this file at startup; the image build leaves it out.
 
 - `SUMMARY_PROVIDER` / `GENERATION_PROVIDER`: `openai` or `anthropic`, each with `*_BASE_URL`, `*_API_KEY`, and `*_MODEL`
 - Embeddings use an OpenAI-compatible endpoint: `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMS`. Moonshot/Kimi has no official embedding API; point `EMBEDDING_*` at another service
