@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import struct
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Optional
 
 from sqlalchemy import select, text
@@ -152,6 +152,7 @@ async def embed_and_store_batch(
     *,
     novel_id: int,
     before_batch: Callable[[], None] | None = None,
+    on_batch: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> int:
     """批量向量化并写入；返回成功写入条数。智谱等支持一次多 input。"""
     if not items:
@@ -191,6 +192,8 @@ async def embed_and_store_batch(
             novel_id=novel_id,
         )
         await session.flush()
+        if on_batch is not None:
+            await on_batch(written, len(items))
     return written
 
 

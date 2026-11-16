@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
@@ -54,11 +55,14 @@ def _is_db_locked(exc: BaseException) -> bool:
 def _snapshot(task: AsyncTask) -> dict[str, Any]:
     return {
         "id": task.id,
+        "novel_id": task.novel_id,
+        "task_type": task.task_type,
         "status": task.status,
         "progress": task.progress,
         "message": task.message,
         "result": task.result,
         "error": task.error,
+        "recoverable": bool(task.recoverable),
     }
 
 
@@ -80,6 +84,9 @@ class TaskProgress:
         self.task_id = task_id
         self._cancel_requested = False
         self._subscribers: list[asyncio.Queue[dict[str, Any]]] = []
+        self._seq = 0
+        self._history: deque[tuple[int, dict[str, Any]]] = deque(maxlen=64)
+        self._retryable = False
         self._last: dict[str, Any] = {
             "id": task_id,
             "status": "pending",
@@ -110,7 +117,33 @@ class TaskProgress:
             self._subscribers.remove(q)
 
     def sync_from_task(self, task: AsyncTask) -> None:
+        self._retryable = task.can_retry()
         self._last = _snapshot(task)
+
+    def seed_if_empty(self, snapshot: dict[str, Any]) -> None:
+        """还没有进度事件时，用数据库里的当前行做第一条，方便断线后续传。"""
+        if self._history:
+            return
+        self._seq += 1
+        stored = dict(snapshot)
+        self._history.append((self._seq, stored))
+        self._last = stored
+
+    def events_after(self, cursor: int | None) -> list[tuple[int, dict[str, Any]]]:
+        if not self._history:
+            return []
+        if cursor is None:
+            return [self._history[-1]]
+        missed = [(seq, payload) for seq, payload in self._history if seq > cursor]
+        if missed:
+            return missed
+        latest_seq, latest = self._history[-1]
+        oldest = self._history[0][0]
+        if cursor >= latest_seq:
+            return []
+        if cursor < oldest:
+            return [(latest_seq, latest)]
+        return []
 
     async def publish_snapshot(self, task: AsyncTask) -> None:
         payload = _snapshot(task)
@@ -127,22 +160,31 @@ class TaskProgress:
         error: str | None,
     ) -> dict[str, Any]:
         prev = self._last
+        status_val = status if status is not None else prev.get("status")
         payload = {
             "id": self.task_id,
-            "status": status if status is not None else prev.get("status"),
+            "novel_id": prev.get("novel_id"),
+            "task_type": prev.get("task_type"),
+            "status": status_val,
             "progress": (
                 max(0.0, min(100.0, progress)) if progress is not None else prev.get("progress", 0.0)
             ),
             "message": message if message is not None else prev.get("message"),
             "result": result if result is not None else prev.get("result"),
             "error": error if error is not None else prev.get("error"),
+            "recoverable": status_val in ("failed", "cancelled") and self._retryable,
         }
         self._last = payload
         return payload
 
     async def _notify(self, payload: dict[str, Any]) -> None:
+        self._seq += 1
+        stored = dict(payload)
+        self._history.append((self._seq, stored))
+        self._last = stored
+        stamped = {"_sse_id": self._seq, **stored}
         for q in list(self._subscribers):
-            await q.put(payload)
+            await q.put(stamped)
 
     async def update(
         self,
@@ -579,18 +621,13 @@ async def fail_interrupted_tasks(session: AsyncSession) -> int:
 
     SSE 续写不是 AsyncTask；若不复位，重启后 novels/outline_items 会一直 generating。
     """
-    from app.models import Novel, OutlineItem
+    from app.models import Chapter, Novel, Outline, OutlineItem
 
     rows = (
         await session.execute(
             select(AsyncTask).where(AsyncTask.status.in_(("pending", "running")))
         )
     ).scalars().all()
-    for task in rows:
-        task.status = "failed"
-        task.error = "interrupted by restart"
-        task.message = "进程重启，任务已中断"
-        await _release_ingest_novel(session, task)
 
     stuck_novels = (
         await session.execute(select(Novel).where(Novel.status == "generating"))
@@ -601,8 +638,48 @@ async def fail_interrupted_tasks(session: AsyncSession) -> int:
     stuck_items = (
         await session.execute(select(OutlineItem).where(OutlineItem.status == "generating"))
     ).scalars().all()
+    drafts: list[dict[str, Any]] = []
     for item in stuck_items:
+        outline = await session.get(Outline, item.outline_id)
+        chapter = await session.scalar(
+            select(Chapter)
+            .where(Chapter.outline_item_id == item.id)
+            .order_by(Chapter.id.desc())
+            .limit(1)
+        )
+        if (
+            outline is not None
+            and chapter is not None
+            and (chapter.content or "").strip()
+        ):
+            drafts.append(
+                {
+                    "novel_id": outline.novel_id,
+                    "outline_item_id": item.id,
+                    "chapter_id": chapter.id,
+                    "chapter_index": chapter.index,
+                    "chars": int(chapter.char_count or 0),
+                }
+            )
         item.status = "pending"
+
+    for task in rows:
+        related = [row for row in drafts if row["novel_id"] == task.novel_id]
+        task.status = "failed"
+        task.error = "interrupted by restart"
+        if related and task.task_type != "ingest":
+            draft = related[-1]
+            task.message = (
+                f"进程重启。第 {draft['chapter_index']} 章已留下 {draft['chars']} 字，"
+                "打开续写可以接着改。"
+            )
+            result = dict(task.result or {})
+            result["recoverable_draft"] = True
+            result["drafts"] = related
+            task.result = result
+        else:
+            task.message = "进程重启，任务已中断"
+        await _release_ingest_novel(session, task)
 
     await session.commit()
     return len(rows) + len(stuck_novels) + len(stuck_items)

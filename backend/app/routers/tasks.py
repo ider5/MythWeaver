@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +21,7 @@ from app.schemas.tasks import (
 )
 from app.services.llm_profiles import effective_llm
 from app.services.tasks import TaskNotFound, TaskStateError, get_task_queue
+from app.utils.sse import SSE_HEADERS, format_sse
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -71,41 +71,99 @@ async def retry_task(task_id: int, session: AsyncSession = Depends(get_session))
         raise HTTPException(409, str(exc)) from exc
 
 
+def _event_cursor(request: Request, after: int | None) -> int | None:
+    raw = request.headers.get("last-event-id")
+    header: int | None = None
+    if raw:
+        try:
+            header = int(raw)
+        except ValueError:
+            header = None
+    if after is None:
+        return header
+    if header is None:
+        return after
+    return max(header, after)
+
+
+def _strip_sse_id(payload: dict) -> tuple[int | None, dict]:
+    seq = payload.get("_sse_id")
+    body = {key: value for key, value in payload.items() if key != "_sse_id"}
+    return (seq if isinstance(seq, int) else None), body
+
+
 @router.get("/tasks/{task_id}/events")
-async def task_events(task_id: int, session: AsyncSession = Depends(get_session)):
+async def task_events(
+    task_id: int,
+    request: Request,
+    after: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+):
     task = await session.get(AsyncTask, task_id)
     if not task:
         raise HTTPException(404, "任务不存在")
 
     progress = get_task_queue().get_progress(task_id)
+    cursor = _event_cursor(request, after)
     queue = progress.subscribe()
 
     async def event_stream():
-        # 先推当前状态
-        yield f"data: {json.dumps({'id': task.id, 'status': task.status, 'progress': task.progress, 'message': task.message, 'result': task.result, 'error': task.error}, ensure_ascii=False)}\n\n"
+        sent = cursor or 0
+        yield "retry: 1500\n\n"
         try:
+            progress.seed_if_empty(
+                {
+                    "id": task.id,
+                    "novel_id": task.novel_id,
+                    "task_type": task.task_type,
+                    "status": task.status,
+                    "progress": task.progress,
+                    "message": task.message,
+                    "result": task.result,
+                    "error": task.error,
+                    "recoverable": bool(task.recoverable),
+                }
+            )
+            for seq, payload in progress.events_after(cursor):
+                sent = seq
+                yield format_sse(payload, event_id=seq)
+                if payload.get("status") in ("completed", "failed", "cancelled"):
+                    return
             while True:
                 try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    incoming = await asyncio.wait_for(queue.get(), timeout=15.0)
                 except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
-                    # 轮询兜底
+                    yield format_sse(comment="keepalive")
                     from app import db as db_mod
 
                     if db_mod.SessionLocal:
                         async with db_mod.SessionLocal() as s:
-                            t = await s.get(AsyncTask, task_id)
-                            if t and t.status in ("completed", "failed", "cancelled"):
-                                yield f"data: {json.dumps({'id': t.id, 'status': t.status, 'progress': t.progress, 'message': t.message, 'result': t.result, 'error': t.error}, ensure_ascii=False)}\n\n"
+                            current = await s.get(AsyncTask, task_id)
+                            if current and current.status in ("completed", "failed", "cancelled"):
+                                snap = {
+                                    "id": current.id,
+                                    "novel_id": current.novel_id,
+                                    "task_type": current.task_type,
+                                    "status": current.status,
+                                    "progress": current.progress,
+                                    "message": current.message,
+                                    "result": current.result,
+                                    "error": current.error,
+                                    "recoverable": bool(current.recoverable),
+                                }
+                                yield format_sse(snap, event_id=sent or None)
                                 break
                     continue
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                seq, payload = _strip_sse_id(incoming)
+                if seq is not None and seq <= sent:
+                    continue
+                if seq is not None:
+                    sent = seq
+                yield format_sse(payload, event_id=seq)
                 if payload.get("status") in ("completed", "failed", "cancelled"):
                     break
         finally:
             progress.unsubscribe(queue)
-
-    from app.utils.sse import SSE_HEADERS
 
     return StreamingResponse(
         event_stream(), media_type="text/event-stream", headers=SSE_HEADERS

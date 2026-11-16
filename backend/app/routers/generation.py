@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from app.db import get_session
 from app.models import Novel
 from app.schemas.generation import BatchGenerateIn, BatchGenerateTaskOut, GenerateChapterIn
 from app.services.batch_generation import BatchConflict, BatchNotFound, enqueue_batch_generate
-from app.services.generation import stream_generate_chapter
+from app.services.chapter_stream import DRAFT_INTERRUPTED, open_chapter_stream
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 from app.utils.sse import SSE_HEADERS, with_heartbeat
 
@@ -29,10 +29,52 @@ def _sse_response(source: AsyncIterator[dict]) -> StreamingResponse:
     )
 
 
+def _event_cursor(request: Request, after: int | None) -> int | None:
+    raw = request.headers.get("last-event-id")
+    header: int | None = None
+    if raw:
+        try:
+            header = int(raw)
+        except ValueError:
+            header = None
+    if after is None:
+        return header
+    if header is None:
+        return after
+    return max(header, after)
+
+
+async def _chapter_events(
+    *,
+    novel_id: int,
+    outline_item_id: int,
+    run_critic: bool,
+    max_critic_rounds: int,
+    target_chars: int | None,
+    cursor: int | None,
+    allow_start: bool,
+) -> AsyncIterator[dict]:
+    stream = await open_chapter_stream(
+        novel_id=novel_id,
+        outline_item_id=outline_item_id,
+        run_critic=run_critic,
+        max_critic_rounds=max_critic_rounds,
+        target_chars=target_chars,
+        cursor=cursor,
+        allow_start=allow_start,
+    )
+    if stream is None:
+        yield {"event": "error", "message": DRAFT_INTERRUPTED, "draft_saved": True}
+        return
+    async for seq, evt in stream.subscribe(0 if cursor is None else cursor):
+        yield {**evt, "_sse_id": seq}
+
+
 @router.post("")
 async def generate_chapter(
     novel_id: int,
     body: GenerateChapterIn,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     novel = await session.get(Novel, novel_id)
@@ -41,20 +83,19 @@ async def generate_chapter(
     if is_reference_role(novel.role):
         raise HTTPException(409, REFERENCE_GENERATION_DETAIL)
 
-    async def event_source():
-        from app import db as db_mod
+    cursor = _event_cursor(request, None)
 
-        assert db_mod.SessionLocal
-        async with db_mod.SessionLocal() as s:
-            async for evt in stream_generate_chapter(
-                s,
-                novel_id,
-                body.outline_item_id,
-                run_critic=body.run_critic,
-                max_critic_rounds=body.max_critic_rounds,
-                target_chars=body.target_chars,
-            ):
-                yield evt
+    async def event_source():
+        async for evt in _chapter_events(
+            novel_id=novel_id,
+            outline_item_id=body.outline_item_id,
+            run_critic=body.run_critic,
+            max_critic_rounds=body.max_critic_rounds,
+            target_chars=body.target_chars,
+            cursor=cursor,
+            allow_start=True,
+        ):
+            yield evt
 
     return _sse_response(event_source())
 
@@ -96,30 +137,27 @@ async def generate_batch(
 @router.get("/stream")
 async def generate_chapter_sse(
     novel_id: int,
+    request: Request,
     outline_item_id: int = Query(...),
     run_critic: bool = Query(True),
     max_critic_rounds: int = Query(2, ge=0, le=2),
     target_chars: int | None = Query(default=None, ge=500, le=30000),
+    after: int | None = Query(default=None),
+    attach: bool = Query(default=False),
 ):
-    """EventSource 友好的 GET SSE。"""
+    """EventSource 友好的 GET SSE。attach=1 只接已有流，不新开一章。"""
+    cursor = _event_cursor(request, after)
 
     async def event_source():
-        from app import db as db_mod
-
-        assert db_mod.SessionLocal
-        async with db_mod.SessionLocal() as s:
-            novel = await s.get(Novel, novel_id)
-            if not novel:
-                yield {"event": "error", "message": "小说不存在"}
-                return
-            async for evt in stream_generate_chapter(
-                s,
-                novel_id,
-                outline_item_id,
-                run_critic=run_critic,
-                max_critic_rounds=max_critic_rounds,
-                target_chars=target_chars,
-            ):
-                yield evt
+        async for evt in _chapter_events(
+            novel_id=novel_id,
+            outline_item_id=outline_item_id,
+            run_critic=run_critic,
+            max_critic_rounds=max_critic_rounds,
+            target_chars=target_chars,
+            cursor=cursor,
+            allow_start=not attach,
+        ):
+            yield evt
 
     return _sse_response(event_source())
