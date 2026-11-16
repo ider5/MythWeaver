@@ -3,7 +3,9 @@
 复用 `stream_generate_chapter`，不改单章 SSE。进度写在 AsyncTask.result。
 
 取消走现有 `POST /api/tasks/{id}/cancel`。正在写的一章会写完，下一章开始前停下。
-某一章生成失败，或 Critic 报告未通过时，同样不再写后面的章。
+某一章生成失败、Critic 出现严重问题、篇幅偏离目标，或章末没落到悬念钩子时，不再写后面的章。
+文风漂移、伏笔提醒和其它警告只记在这一章上，连续生成继续。
+`spot_check` 为真时，完整 Critic 只跑首章、末章和每隔 3 章。
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AsyncTask, Novel, Outline, OutlineItem
 from app.services.generation import resolve_target_chapter_index, stream_generate_chapter
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
+from app.services.quality_loop import blocking_message, chapters_for_full_critic
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,7 @@ class BatchConflict(ValueError):
 
 
 def critic_gate_reason(consistency: dict[str, Any] | None, *, run_critic: bool) -> str | None:
-    """Critic 未通过时返回暂停原因。警告且 ok 仍为真时继续。"""
+    """完整 Critic 出现 severity=error，或没有报告时暂停。warning 继续写。"""
     if not run_critic:
         return None
     if not consistency:
@@ -43,14 +46,56 @@ def critic_gate_reason(consistency: dict[str, Any] | None, *, run_critic: bool) 
         for issue in issues
         if str(issue.get("severity") or "").lower() == "error"
     ]
-    if consistency.get("ok") is False or errors:
-        message = ""
-        if errors:
-            message = str(errors[0].get("message") or "").strip()
-        if not message:
-            message = "一致性未通过"
-        return f"Critic 未通过：{message}"
-    return None
+    if not errors:
+        return None
+    message = str(errors[0].get("message") or "").strip() or "一致性未通过"
+    return f"Critic 未通过：{message}"
+
+
+def _quality_hints(quality: dict[str, Any] | None) -> list[dict[str, Any]]:
+    hints = (quality or {}).get("hints") if isinstance(quality, dict) else None
+    if not isinstance(hints, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for hint in hints:
+        if not isinstance(hint, dict):
+            continue
+        cleaned.append(
+            {
+                "id": hint.get("id"),
+                "kind": hint.get("kind"),
+                "severity": hint.get("severity"),
+                "message": hint.get("message") or "",
+            }
+        )
+    return cleaned
+
+
+def completion_note(quality: dict[str, Any] | None, consistency: dict[str, Any] | None) -> str:
+    """已完成章节上要露出来的非严重提示。"""
+    notes: list[str] = []
+    for hint in _quality_hints(quality):
+        if str(hint.get("severity") or "").lower() == "error":
+            continue
+        message = str(hint.get("message") or "").strip()
+        if message:
+            notes.append(message)
+    for issue in (consistency or {}).get("issues") or []:
+        if not isinstance(issue, dict):
+            continue
+        if str(issue.get("severity") or "").lower() != "warning":
+            continue
+        message = str(issue.get("message") or "").strip()
+        if message:
+            notes.append(message)
+    if not notes:
+        return "已完成"
+    shown = notes[:2]
+    text = "；".join(shown)
+    extra = len(notes) - len(shown)
+    if extra:
+        text += f"；另有 {extra} 条"
+    return f"已完成 · {text}"
 
 
 def _item_row(item: OutlineItem, *, start_from_chapter: int) -> dict[str, Any]:
@@ -76,6 +121,7 @@ def _snapshot(
     from_order: int,
     count: int,
     run_critic: bool,
+    spot_check: bool,
     items: list[dict[str, Any]],
     paused: bool,
     pause_reason: str | None,
@@ -95,6 +141,7 @@ def _snapshot(
         "from_order": from_order,
         "count": count,
         "run_critic": run_critic,
+        "spot_check": spot_check,
         "paused": paused,
         "pause_reason": pause_reason,
         "summary": summary,
@@ -174,6 +221,7 @@ async def enqueue_batch_generate(
     from_order: int,
     count: int,
     run_critic: bool = True,
+    spot_check: bool = False,
 ) -> AsyncTask:
     outline, selected = await plan_batch_items(
         session,
@@ -190,6 +238,7 @@ async def enqueue_batch_generate(
         from_order=from_order,
         count=count,
         run_critic=run_critic,
+        spot_check=spot_check,
         items=[_item_row(item, start_from_chapter=outline.start_from_chapter) for item in selected],
         paused=False,
         pause_reason=None,
@@ -244,9 +293,11 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
     from_order = int(payload.get("from_order") or 1)
     count = int(payload.get("count") or 0)
     run_critic = bool(payload.get("run_critic", True))
+    spot_check = bool(payload.get("spot_check", False))
     items: list[dict[str, Any]] = [dict(row) for row in (payload.get("items") or [])]
     if not novel_id or not outline_id or not items:
         raise ValueError("连续生成任务缺少大纲范围")
+    full_indexes = chapters_for_full_critic(len(items), spot_check=spot_check)
 
     from app import db as db_mod
 
@@ -265,6 +316,7 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
             from_order=from_order,
             count=count or len(items),
             run_critic=run_critic,
+            spot_check=spot_check,
             items=items,
             paused=paused,
             pause_reason=pause_reason,
@@ -298,7 +350,7 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
                     chapter_session,
                     novel_id,
                     int(row["outline_item_id"]),
-                    run_critic=run_critic,
+                    run_critic=run_critic and index in full_indexes,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -312,21 +364,10 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
             await progress.update(session, message=str(exc), result=_current_snapshot())
             raise RuntimeError(row["message"]) from exc
 
-        consistency = done.get("consistency") if isinstance(done.get("consistency"), dict) else None
-        row["chapter_id"] = done.get("chapter_id")
-        row["consistency_ok"] = None if consistency is None else bool(consistency.get("ok"))
-        gate = critic_gate_reason(consistency, run_critic=run_critic)
-        if gate:
-            row["status"] = "paused"
-            row["message"] = gate
-            paused = True
-            pause_reason = gate
-            _block_rest(items, index + 1, "前序章节未通过 Critic，已停下")
-            break
-
-        row["status"] = "done"
-        row["message"] = "已完成"
         if getattr(progress, "cancel_requested", False):
+            row["status"] = "done"
+            row["chapter_id"] = done.get("chapter_id")
+            row["message"] = "已完成"
             _block_rest(items, index + 1, "已取消，后续不再生成")
             await progress.update(
                 session,
@@ -336,12 +377,33 @@ async def batch_generate_handler(session: AsyncSession, task: AsyncTask, progres
             )
             raise TaskCancelled("任务已取消")
 
+        consistency = done.get("consistency") if isinstance(done.get("consistency"), dict) else None
+        quality = done.get("quality") if isinstance(done.get("quality"), dict) else None
+        full_critic = run_critic and index in full_indexes
+        row["chapter_id"] = done.get("chapter_id")
+        row["consistency_ok"] = None if consistency is None else bool(consistency.get("ok"))
+        row["spot_checked"] = full_critic
+        row["quality_hints"] = _quality_hints(quality)
+        gate = critic_gate_reason(consistency, run_critic=full_critic) or blocking_message(quality)
+        if gate:
+            row["status"] = "paused"
+            row["message"] = gate
+            paused = True
+            pause_reason = gate
+            blocked = "前序章节未通过质量检查，已停下"
+            _block_rest(items, index + 1, blocked)
+            break
+
+        row["status"] = "done"
+        row["message"] = completion_note(quality, consistency)
+
     return _snapshot(
         novel_id=novel_id,
         outline_id=outline_id,
         from_order=from_order,
         count=count or len(items),
         run_critic=run_critic,
+        spot_check=spot_check,
         items=items,
         paused=paused,
         pause_reason=pause_reason,

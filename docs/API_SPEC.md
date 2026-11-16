@@ -85,7 +85,13 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 - `GET /api/novels/{id}/generate/stream?outline_item_id=&run_critic=&max_critic_rounds=`
 - `POST /api/novels/{id}/generate` body 同上，响应同为 SSE
-- `POST /api/novels/{id}/generate/batch` 连续生成已确认大纲中的一段：`{ outline_id, from_order, count≤10, run_critic }` → `{ task_id, status }`。按序号逐章调用同一条生成路径。进度在 `GET /api/tasks/{tid}` 的 `result.items`。Critic 报告 `ok=false` 或含 `severity=error` 时暂停，不再写后面的章。生成抛错同样停下。参考本与单章续写一样返回 409。
+- `POST /api/novels/{id}/generate/batch` 连续生成已确认大纲中的一段：`{ outline_id, from_order, count≤10, run_critic, spot_check? }` → `{ task_id, status }`。按序号逐章调用同一条生成路径。进度在 `GET /api/tasks/{tid}` 的 `result.items`。`spot_check=true` 时完整 Critic 只跑首章、末章和每隔 3 章。篇幅偏离目标 ±20%，章末没落到大纲悬念钩子，或 Critic 出现 `severity=error` 时暂停。warning（文风漂移、伏笔提醒、套话）记在该章 `message` / `quality_hints` 上，后续继续。生成抛错同样停下。参考本与单章续写一样返回 409。
+- `GET /api/novels/{id}/open-threads?chapter_index=` 写作台未回收伏笔。`due` 为 `approaching` | `due` | `overdue`，没有计划回收章时为 null。
+- `GET /api/novels/{id}/chapters/{cid}/quality` 对照已保存文风样本、计划回收章、篇幅和章末钩子。不调用模型。
+
+伏笔 `planned_resolve_chapter` 可空。空表示尚未安排回收；临近 2 章内、本章、或已逾期才会在质量提示里出现。
+
+SSE `done` 增加 `quality`：`{ chapter_index, critical, hints[] }`。
 
 取消用现有 `POST /api/tasks/{tid}/cancel`。正在写的一章会写完，下一章不再开始。
 

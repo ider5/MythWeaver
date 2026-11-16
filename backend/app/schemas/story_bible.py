@@ -68,6 +68,7 @@ class PlotThreadCreate(BaseModel):
     status: str = "未回收"
     introduced_chapter: Optional[int] = None
     resolved_chapter: Optional[int] = None
+    planned_resolve_chapter: Optional[int] = None
 
 
 class PlotThreadUpdate(BaseModel):
@@ -77,6 +78,7 @@ class PlotThreadUpdate(BaseModel):
     status: Optional[str] = None
     introduced_chapter: Optional[int] = None
     resolved_chapter: Optional[int] = None
+    planned_resolve_chapter: Optional[int] = None
 
 
 class PlotThreadOut(ORMModel):
@@ -88,6 +90,7 @@ class PlotThreadOut(ORMModel):
     status: str
     introduced_chapter: Optional[int] = None
     resolved_chapter: Optional[int] = None
+    planned_resolve_chapter: Optional[int] = None
     updated_at: datetime
 
 

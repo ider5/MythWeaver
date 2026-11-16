@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Chapter, ChapterVersion, Novel
-from app.schemas.generation import ConsistencyIssue
+from app.models import Chapter, ChapterVersion, Novel, OutlineItem
+from app.schemas.generation import ConsistencyIssue, OpenThreadsOut, QualitySignals
 from app.schemas.novel import (
     ChapterOut,
     ChapterPreview,
@@ -31,10 +31,11 @@ from app.schemas.novel import (
 )
 from app.services import ingestion
 from app.services import scratch as scratch_svc
-from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.chapter_length import refresh_original_chapter_stats, resolve_target_chars
 from app.services.epub_export import build_epub
 from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
+from app.services.quality_loop import assess_chapter_quality, list_open_threads
 from app.services.novel_role import (
     REFERENCE_EXPORT_DETAIL,
     is_reference_role,
@@ -346,6 +347,49 @@ async def get_chapter(novel_id: int, chapter_id: int, session: AsyncSession = De
         is_generated=ch.is_generated,
         outline_item_id=ch.outline_item_id,
         content=ch.content,
+    )
+
+
+@router.get("/{novel_id}/open-threads", response_model=OpenThreadsOut)
+async def open_threads(
+    novel_id: int,
+    chapter_index: int = Query(..., ge=1),
+    session: AsyncSession = Depends(get_session),
+):
+    """写作台未回收伏笔。已回收、或尚未出场的线不返回。"""
+    novel = await session.get(Novel, novel_id)
+    if novel is None:
+        raise HTTPException(404, "小说不存在")
+    return await list_open_threads(session, novel_id, chapter_index)
+
+
+@router.get("/{novel_id}/chapters/{chapter_id}/quality", response_model=QualitySignals)
+async def chapter_quality(
+    novel_id: int,
+    chapter_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """对照文风样本、计划回收章、篇幅和章末钩子。不调用模型。"""
+    chapter = await session.get(Chapter, chapter_id)
+    if chapter is None or chapter.novel_id != novel_id:
+        raise HTTPException(404, "章节不存在")
+    novel = await session.get(Novel, novel_id)
+    if novel is None:
+        raise HTTPException(404, "小说不存在")
+    hook = ""
+    if chapter.outline_item_id:
+        item = await session.get(OutlineItem, chapter.outline_item_id)
+        if item is not None:
+            hook = item.suspense_hook or ""
+    target = await resolve_target_chars(session, novel, None)
+    return await assess_chapter_quality(
+        session,
+        novel_id,
+        chapter.content or "",
+        chapter_index=chapter.index,
+        target_chars=target,
+        suspense_hook=hook,
+        include_local_rules=True,
     )
 
 

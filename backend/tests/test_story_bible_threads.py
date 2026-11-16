@@ -101,4 +101,25 @@ async def test_plot_thread_chapters_set_clear_and_relationships_roundtrip(client
     body = bible.json()
     assert body["plot_threads"][0]["introduced_chapter"] == 2
     assert body["plot_threads"][0]["resolved_chapter"] is None
+    assert body["plot_threads"][0]["planned_resolve_chapter"] is None
+
+    planned = await client.patch(
+        f"/api/novels/{novel_id}/bible/plot-threads/{tid}",
+        json={"planned_resolve_chapter": 4, "status": "未回收"},
+    )
+    assert planned.status_code == 200
+    assert planned.json()["planned_resolve_chapter"] == 4
+
+    desk = await client.get(f"/api/novels/{novel_id}/open-threads", params={"chapter_index": 3})
+    assert desk.status_code == 200
+    rows = desk.json()["threads"]
+    assert rows[0]["title"] == "玉佩之谜"
+    assert rows[0]["due"] == "approaching"
+
+    cleared_plan = await client.patch(
+        f"/api/novels/{novel_id}/bible/plot-threads/{tid}",
+        json={"planned_resolve_chapter": None},
+    )
+    assert cleared_plan.status_code == 200
+    assert cleared_plan.json()["planned_resolve_chapter"] is None
     assert body["characters"][0]["relationships"]["苏婉"] == "青梅竹马"

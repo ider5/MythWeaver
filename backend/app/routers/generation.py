@@ -80,6 +80,7 @@ async def generate_batch(
             from_order=body.from_order,
             count=body.count,
             run_critic=body.run_critic,
+            spot_check=body.spot_check,
         )
     except TaskDuplicateError as exc:
         raise HTTPException(409, str(exc)) from exc

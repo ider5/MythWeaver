@@ -11,6 +11,8 @@ interface BatchRow {
   status: string
   message?: string
   consistency_ok?: boolean | null
+  spot_checked?: boolean
+  quality_hints?: Array<{ message?: string; severity?: string }>
 }
 
 const props = defineProps<{
@@ -27,6 +29,7 @@ const emit = defineEmits<{
 const count = ref(2)
 const fromOrder = ref(1)
 const runCritic = ref(true)
+const spotCheck = ref(true)
 const running = ref(false)
 const stopping = ref(false)
 const activeTaskId = ref<number | null>(null)
@@ -215,6 +218,7 @@ async function start() {
       from_order: Math.max(1, Number(fromOrder.value) || 1),
       count: chapterCount.value,
       run_critic: runCritic.value,
+      spot_check: runCritic.value && spotCheck.value,
     })
     activeTaskId.value = data.task_id
     watchTask(data.task_id)
@@ -237,7 +241,7 @@ onUnmounted(() => closeEs())
         <h2 class="director__title">连续生成</h2>
       </div>
       <p class="meta director__hint">
-        从已确认大纲的某一条开始，按顺序写几章。检查没过、生成失败，或你点了停止，下一章就不再写。正在写的这一章会写完。
+        从已确认大纲的某一条开始，按顺序写几章。篇幅偏离目标，或章末没落到悬念钩子，就会停下。严重的前后文问题也会停下；警告记在这一章上，后面继续写。
       </p>
     </div>
 
@@ -253,6 +257,10 @@ onUnmounted(() => closeEs())
       <label class="check">
         <input v-model="runCritic" type="checkbox" :disabled="running" />
         <span>写完检查前后文</span>
+      </label>
+      <label class="check">
+        <input v-model="spotCheck" type="checkbox" :disabled="running || !runCritic" />
+        <span>只抽查前后文</span>
       </label>
       <button class="btn" :disabled="!canStart" @click="start">
         {{ running ? '生成中…' : `连续生成 ${chapterCount} 章` }}
@@ -280,6 +288,7 @@ onUnmounted(() => closeEs())
         <span class="chapter-index">第{{ row.chapter_index || row.order }}章</span>
         <span class="director__name">{{ row.title || `序号 ${row.order}` }}</span>
         <span class="status-pill" :class="rowClass(row.status)">{{ rowLabel(row.status) }}</span>
+        <span v-if="row.message" class="meta director__note">{{ row.message }}</span>
       </li>
     </ul>
   </section>
@@ -355,9 +364,15 @@ onUnmounted(() => closeEs())
 
 .director__list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.35rem 0.7rem;
   min-height: 2rem;
+}
+
+.director__note {
+  flex-basis: 100%;
+  padding-left: 4.2rem;
 }
 
 .director__name {
