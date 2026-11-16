@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import {
   configApi,
   providersApi,
@@ -9,6 +9,9 @@ import {
   type LLMProfile,
   type ProviderPreset,
 } from '@/api'
+
+const route = useRoute()
+const fromStart = computed(() => route.query.from === 'start')
 
 const presets = ref<ProviderPreset[]>([])
 const profiles = ref<LLMProfile[]>([])
@@ -213,9 +216,16 @@ async function runTest() {
       <h1 class="text-xl font-semibold tracking-tight">模型设置</h1>
       <p class="mt-1 text-sm text-[var(--ink-muted)]">
         当前续写和向量用的连接在下面。配置存在本机数据库，启用后马上生效。密钥只显示末四位。
+        <RouterLink class="crumb" to="/settings/health">运行状态</RouterLink>
+        看接口、数据库和模型。
         <RouterLink class="crumb" to="/settings/appearance">界面外观在这里调整。</RouterLink>
       </p>
     </div>
+
+    <p v-if="fromStart" class="alert alert--ok">
+      保存或测通之后回到首页，选开书或续写。
+      <RouterLink class="crumb" to="/">回到首页</RouterLink>
+    </p>
 
     <div v-if="loading" class="panel p-5 text-sm text-[var(--ink-muted)]">加载设置…</div>
     <div v-else-if="loadError" class="panel p-5 text-sm text-[var(--danger)]">{{ loadError }}</div>

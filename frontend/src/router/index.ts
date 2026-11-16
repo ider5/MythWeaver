@@ -12,6 +12,11 @@ const router = createRouter({
       component: () => import('@/views/ProviderSettings.vue'),
     },
     {
+      path: '/settings/health',
+      name: 'health',
+      component: () => import('@/views/HealthSettings.vue'),
+    },
+    {
       path: '/settings/appearance',
       name: 'appearance',
       component: () => import('@/views/AppearanceSettings.vue'),
