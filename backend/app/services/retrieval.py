@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import is_vec_available
 from app.llm.client import get_llm_client
+from app.services.llm_profiles import effective_llm
 from app.llm.cost_tracker import log_cost
 from app.models import Chapter, Summary
 from app.utils.chinese_text import extract_keywords
@@ -139,7 +140,7 @@ async def embed_and_store(
         session,
         purpose="embed",
         provider="openai",
-        model=get_settings().embedding_model,
+        model=effective_llm().embedding_model,
         input_tokens=tokens,
         novel_id=novel_id,
     )
@@ -185,7 +186,7 @@ async def embed_and_store_batch(
             session,
             purpose="embed",
             provider="openai",
-            model=settings.embedding_model,
+            model=effective_llm().embedding_model,
             input_tokens=tokens,
             novel_id=novel_id,
         )
@@ -254,7 +255,7 @@ async def hybrid_search(
             session,
             purpose="embed",
             provider="openai",
-            model=get_settings().embedding_model,
+            model=effective_llm().embedding_model,
             input_tokens=tokens,
             novel_id=novel_id,
         )

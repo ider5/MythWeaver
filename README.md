@@ -208,11 +208,13 @@ make dist                     # ./scripts/package.sh dist
 
 一致性校验（`consistency`）调用摘要端点。Critic 自动修稿（`critic`）调用生成端点；正文长于分段阈值时跳过整章重写。成本上，`critic` 与 `consistency` 按 `COST_SUMMARY_*` 估算，`outline` 与 `generation` 按 `COST_GENERATION_*`，`embed` 按 `COST_EMBEDDING`（USD / 1M tokens）。`GET /api/costs?novel_id=` 返回总额、`by_purpose`、`by_purpose_tokens` 和最近调用。
 
-前端「LLM 设置」（`/settings/providers`）提供 OpenAI、DeepSeek、Moonshot、通义、智谱、OpenRouter、Ollama 与自定义预设。选择预设会填入默认 Base URL 与模型。「测试连接」调用 `POST /api/providers/test`，密钥只用于本次探测、不落库。测通后把相同值写入 `backend/.env`。
+前端「LLM 设置」（`/settings/providers`）可以查看当前生效的厂商、模型和密钥状态（匿名或掩码），并把正在生效的连接存成命名配置。配置写在本机 SQLite，启用后续写和向量立刻改用该配置。接口不返回明文密钥。「测试连接」仍然只探测、不把这次输入单独落库。没有启用配置时，仍读 `backend/.env`。
 
-### 厂商预设与连接测试
+### 厂商预设与配置档案
 
-前端「LLM 设置」页（`/settings/providers`）列出常见 OpenAI 兼容厂商。选中后填入默认 Base URL 和模型；「测试连接」调用 `POST /api/providers/test`，密钥只用于这次探测，不写入数据库。测通后把相同值写进 `backend/.env`。
+前端「LLM 设置」页列出常见 OpenAI 兼容厂商，选中后填入默认 Base URL 和模型。「测试连接」调用 `POST /api/providers/test`，这次填写的密钥只用于探测。
+
+同一页可以「存下当前生效配置」。档案包括续写 / 摘要 / 向量的地址、模型和密钥，保存在本机数据库。列表里可以启用、改名、用当前生效覆盖，或删除。启用后 `GET /api/config` 的 `stage_routes` 与后续生成、向量请求都走该档案。删除正在使用的档案后回到 `.env`。响应里的密钥只有 `anonymous` 或末四位掩码。
 
 ### 测试
 
@@ -458,7 +460,7 @@ The usage page (`/novels/{id}/costs`) reads `stage_routes` and `GET /api/costs`:
 
 The consistency check (`consistency`) calls the summary endpoint. Automatic critic rewrites (`critic`) call the generation endpoint; chapters longer than the segment threshold skip a full rewrite. For cost, `critic` and `consistency` use `COST_SUMMARY_*`, `outline` and `generation` use `COST_GENERATION_*`, and `embed` uses `COST_EMBEDDING` (USD per 1M tokens). `GET /api/costs?novel_id=` returns the total, `by_purpose`, `by_purpose_tokens`, and recent calls.
 
-LLM settings (`/settings/providers`) include presets for OpenAI, DeepSeek, Moonshot, Tongyi, Zhipu, OpenRouter, Ollama, and custom. A preset fills the default base URL and model. “Test connection” calls `POST /api/providers/test`. The key is used for that probe only and is not stored. After a successful test, write the same values into `backend/.env`.
+LLM settings (`/settings/providers`) show the active provider, models, and key mode (anonymous or masked). The current connection can be saved as a named profile in the local SQLite database. Activating a profile switches generation and embedding immediately. Connection tests still do not store the probe key. With no profile active, the app reads `backend/.env`.
 
 ### Tests
 

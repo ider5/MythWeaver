@@ -205,7 +205,7 @@ The usage page (`/novels/{id}/costs`) reads `stage_routes` and `GET /api/costs`:
 
 The consistency check (`consistency`) calls the summary endpoint. Automatic critic rewrites (`critic`) call the generation endpoint; chapters longer than the segment threshold skip a full rewrite. For cost, `critic` and `consistency` use `COST_SUMMARY_*`, `outline` and `generation` use `COST_GENERATION_*`, and `embed` uses `COST_EMBEDDING` (USD per 1M tokens). `GET /api/costs?novel_id=` returns the total, `by_purpose`, `by_purpose_tokens`, and recent calls.
 
-LLM settings (`/settings/providers`) include presets for OpenAI, DeepSeek, Moonshot, Tongyi, Zhipu, OpenRouter, Ollama, and custom. A preset fills the default base URL and model. “Test connection” calls `POST /api/providers/test`. The key is used for that probe only and is not stored. After a successful test, write the same values into `backend/.env`.
+LLM settings (`/settings/providers`) show the active provider, models, and key mode (anonymous or masked). Save the live connection as a named profile in the local SQLite database, then activate it to switch generation and embedding. Connection tests still do not store that probe key. With no profile active, the app reads `backend/.env`.
 
 ## Tests
 

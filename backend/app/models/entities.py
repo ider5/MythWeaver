@@ -337,3 +337,32 @@ class StyleSample(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     novel: Mapped[Novel] = relationship(back_populates="style_samples")
+
+
+class LLMProfile(Base):
+    """命名的 LLM 连接配置。密钥只存本机库，接口只回掩码。"""
+
+    __tablename__ = "llm_profiles"
+    __table_args__ = (UniqueConstraint("name", name="uq_llm_profile_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    vendor_id: Mapped[Optional[str]] = mapped_column(String(32))
+    summary_follows_generation: Mapped[bool] = mapped_column(Boolean, default=True)
+    generation_provider: Mapped[str] = mapped_column(String(16), default="openai")
+    generation_base_url: Mapped[str] = mapped_column(Text, default="")
+    generation_api_key: Mapped[str] = mapped_column(Text, default="")
+    generation_model: Mapped[str] = mapped_column(String(128), default="")
+    summary_provider: Mapped[str] = mapped_column(String(16), default="openai")
+    summary_base_url: Mapped[str] = mapped_column(Text, default="")
+    summary_api_key: Mapped[str] = mapped_column(Text, default="")
+    summary_model: Mapped[str] = mapped_column(String(128), default="")
+    embedding_base_url: Mapped[str] = mapped_column(Text, default="")
+    embedding_api_key: Mapped[str] = mapped_column(Text, default="")
+    embedding_model: Mapped[str] = mapped_column(String(128), default="")
+    embedding_dims: Mapped[int] = mapped_column(Integer, default=1536)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )

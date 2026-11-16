@@ -5,6 +5,7 @@ from app.models.entities import (
     ChapterVersion,
     Character,
     CostLog,
+    LLMProfile,
     Novel,
     Outline,
     OutlineItem,
@@ -28,6 +29,7 @@ __all__ = [
     "OutlineItem",
     "AsyncTask",
     "CostLog",
+    "LLMProfile",
     "RecurrentMemory",
     "StyleSample",
 ]
