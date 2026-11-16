@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_session
 from app.models import Novel
-from app.schemas.generation import GenerateChapterIn
+from app.schemas.generation import BatchGenerateIn, BatchGenerateTaskOut, GenerateChapterIn
+from app.services.batch_generation import BatchNotFound, enqueue_batch_generate
 from app.services.generation import stream_generate_chapter
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 from app.utils.sse import SSE_HEADERS, with_heartbeat
@@ -56,6 +57,33 @@ async def generate_chapter(
                 yield evt
 
     return _sse_response(event_source())
+
+
+@router.post("/batch", response_model=BatchGenerateTaskOut)
+async def generate_batch(
+    novel_id: int,
+    body: BatchGenerateIn,
+    session: AsyncSession = Depends(get_session),
+):
+    """入队连续生成。单章 SSE 接口不变。
+
+    当前没有任务取消 API：任务开始后会写完已经动手的那一章，
+    不能从这里中途掐掉。Critic 未通过或某一章生成失败时，后续章节不会再写。
+    """
+    try:
+        task = await enqueue_batch_generate(
+            session,
+            novel_id,
+            outline_id=body.outline_id,
+            from_order=body.from_order,
+            count=body.count,
+            run_critic=body.run_critic,
+        )
+    except BatchNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return BatchGenerateTaskOut(task_id=task.id, status=task.status)
 
 
 @router.get("/stream")
