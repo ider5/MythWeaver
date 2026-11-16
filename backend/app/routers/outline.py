@@ -28,6 +28,8 @@ async def list_outlines(novel_id: int, session: AsyncSession = Depends(get_sessi
 @router.post("/generate", response_model=OutlineGenerateTaskOut)
 async def generate(novel_id: int, body: OutlineGenerateIn, session: AsyncSession = Depends(get_session)):
     """入队异步大纲生成，前端通过 /api/tasks/{id}/events 跟踪进度。"""
+    from app.services.tasks import TaskDuplicateError
+
     try:
         task = await outline_svc.enqueue_outline_generate(
             session,
@@ -36,6 +38,8 @@ async def generate(novel_id: int, body: OutlineGenerateIn, session: AsyncSession
             guidance=body.guidance,
             start_from_chapter=body.start_from_chapter,
         )
+    except TaskDuplicateError as e:
+        raise HTTPException(409, str(e)) from e
     except ValueError as e:
         raise HTTPException(404, str(e)) from e
     return OutlineGenerateTaskOut(task_id=task.id, status=task.status)

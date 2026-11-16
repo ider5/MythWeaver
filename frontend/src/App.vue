@@ -20,7 +20,11 @@ const wide = computed(() => String(route.path).startsWith('/novels/'))
       </nav>
     </header>
     <main class="app-main" :class="{ 'app-main--wide': wide }">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <KeepAlive :max="12">
+          <component :is="Component" :key="route.path.split('/').slice(0, 3).join('/')" />
+        </KeepAlive>
+      </RouterView>
     </main>
   </div>
 </template>

@@ -203,8 +203,12 @@ async def import_confirm(body: ImportConfirmIn, session: AsyncSession = Depends(
 
 @router.post("/{novel_id}/ingest")
 async def start_ingest(novel_id: int, session: AsyncSession = Depends(get_session)):
+    from app.services.tasks import TaskDuplicateError
+
     try:
         task = await ingestion.start_ingestion(session, novel_id)
+    except TaskDuplicateError as e:
+        raise HTTPException(409, str(e)) from e
     except ValueError as e:
         raise HTTPException(404, str(e)) from e
     return {"task_id": task.id, "status": task.status}
@@ -388,8 +392,12 @@ async def commit_chapter_knowledge(
     ch = await session.get(Chapter, chapter_id)
     if not ch or ch.novel_id != novel_id:
         raise HTTPException(404, "章节不存在")
+    from app.services.tasks import TaskDuplicateError
+
     try:
         task_id = await enqueue_revise_commit(session, chapter_id)
+    except TaskDuplicateError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     latest = (

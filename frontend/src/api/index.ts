@@ -342,6 +342,8 @@ export const tasksApi = {
     api.get<Task[]>('/tasks', { params: novelId ? { novel_id: novelId } : {} }),
   cancel: (id: number) => api.post<Task>(`/tasks/${id}/cancel`),
   retry: (id: number) => api.post<Task>(`/tasks/${id}/retry`),
+  /** SSE 实时进度：/api/tasks/{id}/events */
+  eventsUrl: (id: number) => `/api/tasks/${id}/events`,
 }
 
 export const costsApi = {

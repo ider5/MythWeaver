@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { tasksApi, type Task } from '@/api'
 import ProgressBar from '@/components/ProgressBar.vue'
+
+defineOptions({ name: 'TaskHistory' })
 
 const route = useRoute()
 const novelId = Number(route.params.id)
@@ -11,7 +13,58 @@ const loaded = ref(false)
 const actionError = ref('')
 const actionNote = ref('')
 const busyId = ref(0)
+const expandedId = ref<number | null>(null)
+const liveDetail = ref<Record<string, unknown> | null>(null)
 let timer = 0
+let es: EventSource | null = null
+
+function closeEs() {
+  es?.close()
+  es = null
+}
+
+function openEs(taskId: number) {
+  closeEs()
+  liveDetail.value = null
+  es = new EventSource(tasksApi.eventsUrl(taskId))
+  es.onmessage = (ev) => {
+    try {
+      const payload = JSON.parse(ev.data) as Task & Record<string, unknown>
+      liveDetail.value = payload
+      upsert(payload as Task)
+      if (['completed', 'failed', 'cancelled'].includes(String(payload.status))) {
+        closeEs()
+      }
+    } catch {
+      /* ignore malformed */
+    }
+  }
+  es.onerror = () => {
+    /* 浏览器会自动重连；结束态由 onmessage 关闭 */
+  }
+}
+
+function toggleExpand(t: Task) {
+  if (expandedId.value === t.id) {
+    expandedId.value = null
+    liveDetail.value = null
+    closeEs()
+    return
+  }
+  expandedId.value = t.id
+  if (t.status === 'pending' || t.status === 'running') openEs(t.id)
+  else {
+    closeEs()
+    liveDetail.value = { ...t }
+  }
+}
+
+watch(expandedId, (id) => {
+  if (id == null) {
+    closeEs()
+    liveDetail.value = null
+  }
+})
 
 const counts = computed(() => {
   let active = 0
@@ -162,6 +215,14 @@ async function onRetry(t: Task) {
   }
 }
 
+function startPolling() {
+  if (timer) window.clearInterval(timer)
+  timer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return
+    load().catch(() => {})
+  }, 2000)
+}
+
 onMounted(async () => {
   try {
     await load()
@@ -170,14 +231,27 @@ onMounted(async () => {
   } finally {
     loaded.value = true
   }
-  timer = window.setInterval(() => {
-    if (document.visibilityState === 'hidden') return
-    load().catch(() => {})
-  }, 2000)
+  startPolling()
+})
+
+onActivated(() => {
+  load().catch(() => {})
+  startPolling()
+  if (expandedId.value != null) {
+    const t = tasks.value.find((x) => x.id === expandedId.value)
+    if (t && (t.status === 'pending' || t.status === 'running')) openEs(t.id)
+  }
+})
+
+onDeactivated(() => {
+  if (timer) window.clearInterval(timer)
+  timer = 0
+  closeEs()
 })
 
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)
+  closeEs()
 })
 </script>
 
@@ -218,6 +292,9 @@ onUnmounted(() => {
             >
               {{ statusLabel(t) }}
             </span>
+            <button type="button" class="hub-detail-btn" @click="toggleExpand(t)">
+              {{ expandedId === t.id ? '收起进度' : '详细进度' }}
+            </button>
           </div>
           <p class="hub-msg" :title="messageOf(t)">{{ messageOf(t) }}</p>
           <div class="hub-meter" :class="meterClass(t)">
@@ -225,6 +302,17 @@ onUnmounted(() => {
             <span class="hub-pct" aria-hidden="true">{{ percent(t) }}%</span>
           </div>
           <p v-if="t.error && t.error !== t.message" class="hub-error" :title="t.error">{{ t.error }}</p>
+          <div v-if="expandedId === t.id" class="hub-live" aria-live="polite">
+            <p class="hub-live__title">实时详情 #{{ t.id }}</p>
+            <p class="hub-live__line">
+              {{ (liveDetail?.message as string) || messageOf(t) }} ·
+              {{ Math.round(Number(liveDetail?.progress ?? t.progress) || 0) }}%
+            </p>
+            <pre v-if="liveDetail?.result" class="hub-live__json">{{
+              JSON.stringify(liveDetail.result, null, 2)
+            }}</pre>
+            <p v-if="liveDetail?.error" class="hub-error">{{ liveDetail.error }}</p>
+          </div>
         </div>
         <div class="hub-row__side">
           <time
@@ -650,6 +738,47 @@ onUnmounted(() => {
     justify-content: space-between;
     min-width: 0;
   }
+}
+
+.hub-detail-btn {
+  margin-left: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.hub-live {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border: 1px solid var(--line);
+}
+
+.hub-live__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hub-live__line {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.hub-live__json {
+  margin: 0.5rem 0 0;
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

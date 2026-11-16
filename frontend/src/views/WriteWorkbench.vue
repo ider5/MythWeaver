@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { novelsApi, outlineApi, tasksApi, type Novel, type Outline, type OutlineItem } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import WritebackReview from '@/components/WritebackReview.vue'
 import { useRafText } from '@/composables/useRafText'
+import { useWorkspaceUiStore } from '@/stores/workspaceUi'
+
+defineOptions({ name: 'WriteWorkbench' })
 
 /** 超过此时长无任何 SSE 事件（含 ping）则判定卡死；应 > 2× 后端心跳间隔 */
 const IDLE_TIMEOUT_MS = 45_000
 
 const route = useRoute()
 const novelId = Number(route.params.id)
+const ui = useWorkspaceUiStore()
+const bootstrapped = ref(false)
 const outlines = ref<Outline[]>([])
 const outline = ref<Outline | null>(null)
 const selected = ref<OutlineItem | null>(null)
@@ -378,6 +383,7 @@ async function selectItem(item: OutlineItem) {
   if (streaming.value) return
   writebackToken.value = 0
   selected.value = item
+  ui.setSelectedItem(novelId, item.id)
   await loadChapterForItem(item)
 }
 
@@ -402,16 +408,25 @@ async function load() {
   try {
     const { data } = await outlineApi.list(novelId)
     outlines.value = data
-    const prevItemId = selected.value?.id
+    const remembered = ui.getSelectedItem(novelId)
+    const prevItemId = selected.value?.id ?? remembered
     outline.value = data.find((o) => o.status === 'confirmed') || data[0] || null
     const items = outline.value?.items || []
     selected.value =
       items.find((i) => i.id === prevItemId) || pendingItems.value[0] || items[0] || null
-    await loadChapterForItem(selected.value)
+    if (selected.value) ui.setSelectedItem(novelId, selected.value.id)
+    // keep-alive 再进入时：若已有正文/流式内容且选中未变，不要清空编辑器
+    const keepLocal =
+      bootstrapped.value &&
+      !!selected.value &&
+      selected.value.id === prevItemId &&
+      (!!content.value || streaming.value)
+    if (!keepLocal) await loadChapterForItem(selected.value)
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e?.message || '大纲加载失败'
   } finally {
     planReady.value = true
+    bootstrapped.value = true
   }
 }
 
@@ -680,6 +695,16 @@ async function deleteWholeChapter() {
 }
 
 onMounted(load)
+onActivated(() => {
+  // 切回续写：刷新大纲状态，但尽量保留当前编辑区内容
+  if (bootstrapped.value && !streaming.value) void load()
+})
+onDeactivated(() => {
+  // 离开标签时挂起 SSE，避免后台写错页；正文留在内存供返回
+  if (streaming.value) stopStream('已切换页面，生成连接已挂起；可返回后重新生成')
+  clearIdleWatch()
+  closeReviseEs()
+})
 onUnmounted(() => {
   invalidateLoadsAndStreams()
   clearIdleWatch()
