@@ -1168,6 +1168,154 @@ input[type="checkbox"] {
   animation: home-rise 640ms ease 80ms both;
 }
 
+.home-cta.path-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 44rem;
+}
+
+.home-resume {
+  position: relative;
+  z-index: 1;
+  margin: 0.85rem 0 0;
+}
+
+.path-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+  padding: 1rem 1.05rem 1.1rem;
+  text-align: left;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.path-card--alt {
+  border-left-color: var(--ink);
+}
+
+.path-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow);
+}
+
+.path-card__kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.path-card--alt .path-card__kicker {
+  color: var(--ink);
+}
+
+.path-card__title {
+  font-family: var(--font-prose);
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.path-card__copy {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.home-shelf__actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.create-page {
+  max-width: 40rem;
+}
+
+.create-page .page-desc a {
+  color: var(--accent);
+}
+
+.create-rail {
+  display: flex;
+  gap: 1.25rem;
+  margin: 1.15rem 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.create-rail li {
+  padding-bottom: 0.55rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.create-rail li.is-current {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 650;
+}
+
+.create-rail li.is-done {
+  color: var(--ink);
+}
+
+.create-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.create-split {
+  display: grid;
+  grid-template-columns: 1fr 8rem;
+  gap: 0.75rem;
+}
+
+.create-section {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-prose);
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.create-list {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.create-list li + li {
+  margin-top: 0.55rem;
+}
+
+.create-list p {
+  margin: 0.15rem 0 0;
+}
+
+.create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .home-cta.path-grid,
+  .create-split {
+    grid-template-columns: 1fr;
+  }
+}
+
 .home-shelf__head {
   display: flex;
   align-items: baseline;

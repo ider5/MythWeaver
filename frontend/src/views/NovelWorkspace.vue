@@ -38,17 +38,28 @@ async function refreshActiveTasks() {
   }
 }
 
-const allTabs = [
+const isReference = computed(() => novel.value?.role === 'reference')
+const isScratch = computed(() => novel.value?.origin === 'scratch')
+const allTabs = computed(() => [
   { name: 'bible', label: '设定', path: 'bible' },
   { name: 'outline', label: '大纲', path: 'outline' },
-  { name: 'write', label: '续写', path: 'write' },
+  { name: 'write', label: isScratch.value ? '开篇' : '续写', path: 'write' },
   { name: 'costs', label: '用量', path: 'costs' },
   { name: 'tasks', label: '任务', path: 'tasks' },
-]
-const isReference = computed(() => novel.value?.role === 'reference')
+])
 const tabs = computed(() =>
-  isReference.value ? allTabs.filter((t) => t.name !== 'write') : allTabs,
+  isReference.value ? allTabs.value.filter((t) => t.name !== 'write') : allTabs.value,
 )
+const deskLabel = computed(() => {
+  if (isReference.value) return '参考拆解'
+  if (isScratch.value) return '开书工作台'
+  return '续写工作台'
+})
+const kindLabel = computed(() => {
+  if (isReference.value) return '参考'
+  if (isScratch.value) return '开书'
+  return '续写'
+})
 
 function exportNovel(format: 'txt' | 'md' = 'txt') {
   window.open(novelsApi.exportUrl(id.value, format), '_blank')
@@ -59,6 +70,8 @@ function statusLabel(s?: string) {
   if (s === 'ingesting') return '入库中'
   if (s === 'generating') return '生成中'
   if (s === 'imported') return '已导入'
+  if (s === 'blank') return '待设定'
+  if (s === 'seeded') return '已播种'
   return s || ''
 }
 
@@ -90,13 +103,17 @@ onUnmounted(() => {
         <div class="mb-2">
           <RouterLink to="/" class="crumb">作品</RouterLink>
           <span class="crumb-sep">/</span>
-          <span class="crumb">{{ isReference ? '参考拆解' : '续写工作台' }}</span>
+          <span class="crumb">{{ deskLabel }}</span>
         </div>
         <h1 class="page-title truncate">{{ novel?.title || '…' }}</h1>
         <div class="page-desc tabular flex flex-wrap items-center gap-2">
           <span>{{ novel?.genre }} · {{ novel?.chapter_count }} 章</span>
-          <span v-if="novel" class="badge" :class="isReference ? 'badge--warn' : 'badge--ok'">
-            {{ isReference ? '参考' : '原稿' }}
+          <span
+            v-if="novel"
+            class="badge"
+            :class="isReference ? 'badge--warn' : isScratch ? 'badge--ok' : ''"
+          >
+            {{ kindLabel }}
           </span>
           <span v-if="novel" class="status-pill" :class="statusTone(novel.status)">
             {{ statusLabel(novel.status) }}
@@ -104,6 +121,10 @@ onUnmounted(() => {
         </div>
         <p v-if="isReference" class="page-desc">
           参考小说只拆设定与文风，不会作为续写正文，也不能导出成书。
+        </p>
+        <p v-else-if="isScratch" class="page-desc">
+          从零开书：设定和开篇来自前提，不经过原稿入库。
+          <RouterLink v-if="!novel?.chapter_count" :to="`/create?novel=${id}`">回到开书</RouterLink>
         </p>
       </div>
       <div v-if="novel && !isReference" class="flex gap-2 shrink-0">

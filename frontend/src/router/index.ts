@@ -4,6 +4,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'home', component: () => import('@/views/NovelList.vue') },
+    { path: '/create', name: 'create', component: () => import('@/components/BlankNovelForm.vue') },
     { path: '/import', name: 'import', component: () => import('@/views/ImportWizard.vue') },
     {
       path: '/settings/providers',

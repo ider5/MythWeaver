@@ -34,9 +34,15 @@ class Novel(Base):
         String(16), default="manuscript", server_default="manuscript"
     )
     description: Mapped[Optional[str]] = mapped_column(Text)
+    # import=导入续写；scratch=从零开书，不要求原稿
+    origin: Mapped[str] = mapped_column(
+        String(16), default="import", server_default="import", nullable=False
+    )
+    premise: Mapped[Optional[str]] = mapped_column(Text)
+    writing_style: Mapped[Optional[str]] = mapped_column(Text)
     source_path: Mapped[Optional[str]] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(32), default="imported")
-    # imported | ingesting | ready | generating
+    # imported | ingesting | ready | generating | blank | seeded
     total_chars: Mapped[int] = mapped_column(Integer, default=0)
     chapter_count: Mapped[int] = mapped_column(Integer, default=0)
     # 原作（非生成）单章篇幅缓存；0 表示尚未统计

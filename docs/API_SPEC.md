@@ -19,8 +19,10 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/novels` | 列表。可选 `?role=manuscript` 或 `?role=reference`；不传则全部。续写默认来源用 `manuscript` |
-| POST | `/api/novels` | 创建。`role` 缺省 `manuscript` |
+| GET | `/api/novels` | 列表。可选 `?role=manuscript` 或 `?role=reference`，以及 `?origin=import` 或 `?origin=scratch`。续写默认来源用 `manuscript` |
+| POST | `/api/novels` | 创建导入向的空书。`role` 缺省 `manuscript`，`origin` 固定 `import` |
+| POST | `/api/novels/scratch` | 从零开书。`{ title, genre?, premise, writing_style, author? }`。不接收原稿，`origin=scratch`，`status=blank` |
+| POST | `/api/novels/{id}/scratch/seed` | 用前提播种 Story Bible。导入书返回 409。成功后 `status=seeded` |
 | GET | `/api/novels/{id}` | 详情，含 `role` |
 | PATCH | `/api/novels/{id}` | 更新，可改 `role` |
 | DELETE | `/api/novels/{id}` | 删除 |
@@ -34,7 +36,9 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 | POST | `/api/novels/{id}/chapters/{cid}/revise` | `{ content, commit_to_knowledge }` |
 | POST | `/api/novels/{id}/chapters/{cid}/critic-select-revise` | 按勾选问题修稿：`{ content, issues[], confirm?, commit_to_knowledge? }` → `{ base_content, revised_content, consistency, changed, version_id?, task_id? }`；`confirm=false` 仅预览不落库 |
 
-`role` 缺省为 `manuscript`。参考本可以抽取 Story Bible 与文风，但章节不作为续写来源：`POST /api/novels/{id}/generate` 返回 409；`GET .../generate/stream` 只发出 SSE `error`，不改状态、不写章节。
+`role` 缺省为 `manuscript`。`origin` 缺省为 `import`。参考本可以抽取 Story Bible 与文风，但章节不作为续写来源：`POST /api/novels/{id}/generate` 返回 409；`GET .../generate/stream` 只发出 SSE `error`，不改状态、不写章节。
+
+从零开书（`origin=scratch`）没有原稿：`POST /ingest` 返回 409。播种设定后走原有大纲生成、确认和批量开篇；开篇提示会带上前提和文风。
 
 ## Story Bible
 

@@ -1,0 +1,37 @@
+你是网文设定编辑。根据开书前提抽取一份 Story Bible 种子，不要写正文，也不要写大纲。
+
+题材：{{ genre }}
+文风：{{ writing_style }}
+前提：
+{{ premise }}
+
+请抽取 characters、world_settings、plot_threads，并严格输出 JSON（不要 markdown）：
+{
+  "characters": [
+    {
+      "name": "人物名",
+      "aliases": ["别称"],
+      "role": "主角",
+      "status": "开局状态",
+      "personality": "性格",
+      "speech_style": "说话方式"
+    }
+  ],
+  "world_settings": [
+    {
+      "category": "规则",
+      "title": "设定名",
+      "content": "可执行的世界规则",
+      "do_not_violate": "正文不能打破的限制"
+    }
+  ],
+  "plot_threads": [
+    {
+      "title": "主线名",
+      "description": "这条线要解决什么",
+      "thread_type": "主线",
+      "status": "未回收"
+    }
+  ]
+}
+要求：至少 1 个人物、1 条世界观、1 条主线或伏笔。人物 name、世界观 content、剧情线 title 必填。

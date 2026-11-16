@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { novelsApi, type ImportPreview } from '@/api'
 import ImportRoleChoice from '@/components/ImportRoleChoice.vue'
 
@@ -72,7 +72,10 @@ async function confirm() {
   <div class="wizard max-w-3xl">
     <p class="kicker mb-2">MythWeaver</p>
     <h1 class="page-title mb-1">把一本书接进来</h1>
-    <p class="page-desc">先选用途。原稿进入续写；参考只拆文风，不会变成正文。</p>
+    <p class="page-desc">
+      先选用途。原稿进入续写；参考只拆文风，不会变成正文。没有原稿？
+      <RouterLink to="/create">从零开书</RouterLink>
+    </p>
 
     <ImportRoleChoice v-model="novelRole" />
 

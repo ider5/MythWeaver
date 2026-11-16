@@ -16,7 +16,8 @@ const wide = computed(() => String(route.path).startsWith('/novels/'))
       <div class="header-tools">
         <nav class="app-nav">
           <RouterLink to="/" class="nav-link">小说列表</RouterLink>
-          <RouterLink to="/import" class="nav-link">导入</RouterLink>
+          <RouterLink to="/create" class="nav-link">开书</RouterLink>
+          <RouterLink to="/import" class="nav-link">续写</RouterLink>
           <RouterLink to="/settings/providers" class="nav-link">LLM 设置</RouterLink>
         </nav>
         <RouterLink

@@ -192,6 +192,10 @@ async def build_context(
         style_text = "\n\n---\n\n".join((c.content or "")[:400] for c in chapters[:3])
     else:
         style_text = "\n\n---\n\n".join(s.content for s in samples)
+    style_rule = (getattr(novel, "writing_style", None) or "").strip()
+    if style_rule:
+        rule = f"文风要求：{style_rule}"
+        style_text = f"{rule}\n\n{style_text}".strip() if style_text else rule
 
     # 递归记忆
     mem = (

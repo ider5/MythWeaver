@@ -14,6 +14,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import AsyncTask, Chapter, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services import story_bible as bible_svc
+from app.services.scratch import is_scratch_origin
 from app.utils.chinese_text import int_to_chinese
 from app.utils.json_extract import extract_json
 
@@ -219,6 +220,9 @@ async def generate_outline(
     existing_count = max(start - 1, 0)
     # 进度走独立短事务；先取出标量，避免对象在 commit 后过期
     genre = novel.genre or "玄幻"
+    premise = (novel.premise or "").strip()
+    writing_style = (novel.writing_style or "").strip()
+    scratch = is_scratch_origin(novel.origin)
 
     await _progress(progress, session, pct=8.0, message="准备上下文…")
 
@@ -246,6 +250,9 @@ async def generate_outline(
         chapter_count=chapter_count,
         genre=genre,
         guidance=guidance or "",
+        premise=premise,
+        writing_style=writing_style,
+        is_scratch=scratch,
         recent_summaries=recent or "（无摘要）",
         story_bible=bible_text or "（空）",
         memory=memory,
