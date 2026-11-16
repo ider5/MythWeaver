@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { novelsApi, type ImportPreview } from '@/api'
+import ImportRoleChoice from '@/components/ImportRoleChoice.vue'
 
 const router = useRouter()
+const route = useRoute()
 const step = ref<'upload' | 'preview'>('upload')
 const mode = ref<'file' | 'dir'>('file')
 const novelRole = ref<'manuscript' | 'reference'>('manuscript')
+const roleQuery = route.query.role
+if (roleQuery === 'manuscript' || roleQuery === 'reference') {
+  novelRole.value = roleQuery
+}
 const title = ref('')
 const author = ref('')
 const genre = ref('玄幻')
@@ -63,64 +69,41 @@ async function confirm() {
 </script>
 
 <template>
-  <div class="max-w-3xl">
-    <div class="kicker mb-2">导入</div>
-    <h1 class="page-title mb-1">导入向导</h1>
-    <p class="page-desc mb-5">先选用途，再上传。原稿进入续写；参考只拆文风，不会变成可续写正文。</p>
+  <div class="wizard max-w-3xl">
+    <p class="kicker mb-2">MythWeaver</p>
+    <h1 class="page-title mb-1">把一本书接进来</h1>
+    <p class="page-desc">先选用途。原稿进入续写；参考只拆文风，不会变成正文。</p>
 
-    <div class="role-pick mb-4" role="radiogroup" aria-label="导入用途">
-      <label class="role-card" :class="novelRole === 'manuscript' && 'role-card--active'">
-        <input v-model="novelRole" class="sr-only" type="radio" name="novel-role" value="manuscript" />
-        <span class="role-card__mark">原稿</span>
-        <span class="role-card__title">续写这本书</span>
-        <span class="role-card__copy">入库后可大纲、续写，并导出成书。</span>
-      </label>
-      <label
-        class="role-card role-card--ref"
-        :class="novelRole === 'reference' && 'role-card--active'"
-      >
-        <input v-model="novelRole" class="sr-only" type="radio" name="novel-role" value="reference" />
-        <span class="role-card__mark">参考</span>
-        <span class="role-card__title">只拆文风与结构</span>
-        <span class="role-card__copy">不会成为可续写正文，也不会导出成书。</span>
-      </label>
-    </div>
-    <p v-if="novelRole === 'reference'" class="alert alert--ok mb-5">
-      参考本仍会入库，抽出 Story Bible 与文风。章节留在参考里，不进入默认续写。
-    </p>
+    <ImportRoleChoice v-model="novelRole" />
 
-    <ol class="steps" aria-label="导入步骤">
-      <li class="steps__item" :class="step === 'upload' ? 'steps__item--active' : 'steps__item--done'">
-        1 选择文件
-      </li>
-      <li class="steps__item" :class="step === 'preview' && 'steps__item--active'">2 确认分章</li>
-    </ol>
+    <p class="wizard-phase">{{ step === 'upload' ? '1 / 2  选择文件' : '2 / 2  确认分章' }}</p>
 
-    <div v-if="step === 'upload'" class="panel p-6 space-y-5">
-      <div class="flex gap-2 text-sm">
-        <label
-          class="tab-btn cursor-pointer"
-          :class="mode === 'file' && 'tab-btn--active'"
-        >
-          <input v-model="mode" type="radio" name="import-mode" value="file" class="sr-only" /> 单文件
-        </label>
-        <label
-          class="tab-btn cursor-pointer"
-          :class="mode === 'dir' && 'tab-btn--active'"
-        >
-          <input v-model="mode" type="radio" name="import-mode" value="dir" class="sr-only" /> 多文件/目录
-        </label>
-      </div>
-      <div>
-        <label class="label">标题（可选）</label>
-        <input v-model="title" class="input" placeholder="自动取文件名" />
-      </div>
-      <div>
-        <label class="label">选择文件</label>
+    <div :key="step" class="wizard-pane">
+      <div v-if="step === 'upload'" class="space-y-4">
+        <div class="mode-line" role="group" aria-label="文件范围">
+          <button
+            type="button"
+            :aria-pressed="mode === 'file'"
+            :class="{ 'is-on': mode === 'file' }"
+            @click="mode = 'file'"
+          >
+            单个文件
+          </button>
+          <button
+            type="button"
+            :aria-pressed="mode === 'dir'"
+            :class="{ 'is-on': mode === 'dir' }"
+            @click="mode = 'dir'"
+          >
+            文件夹
+          </button>
+        </div>
         <label class="dropzone cursor-pointer w-full">
           <span class="dropzone__icon" aria-hidden="true">文</span>
-          <span class="font-medium">{{ mode === 'dir' ? '选择文件夹中的 txt / md' : '选择一个 txt / md 文件' }}</span>
-          <span class="meta">点击此区域选择 · 确认后进入分章预览</span>
+          <span class="font-medium">
+            {{ mode === 'dir' ? '选择文件夹里的 txt / md' : '选择一个 txt / md 文件' }}
+          </span>
+          <span class="meta">点此选择。书名先用文件名，下一步再改。</span>
           <input
             type="file"
             class="dropzone__input"
@@ -130,52 +113,104 @@ async function confirm() {
             @change="onFileChange"
           />
         </label>
-      </div>
-      <p v-if="busy" class="empty">解析分章中…</p>
-      <p v-if="error" class="alert alert--danger">{{ error }}</p>
-    </div>
-
-    <div v-else-if="preview" class="space-y-4">
-      <div class="panel p-5 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label">标题</label>
-          <input v-model="title" class="input" />
-        </div>
-        <div>
-          <label class="label">作者</label>
-          <input v-model="author" class="input" />
-        </div>
-        <div>
-          <label class="label">题材</label>
-          <select v-model="genre" class="input">
-            <option>玄幻</option>
-            <option>都市</option>
-            <option>言情</option>
-          </select>
-        </div>
-        <div class="meta self-end tabular">共 {{ preview.chapter_count }} 章 · {{ preview.total_chars }} 字</div>
+        <p v-if="busy" class="empty">解析分章中…</p>
+        <p v-if="error" class="alert alert--danger">{{ error }}</p>
       </div>
 
-      <div class="panel overflow-hidden">
-        <div class="panel-head">分章预览（请确认标题是否正确）</div>
-        <ul class="max-h-96 overflow-auto list-divide">
-          <li v-for="c in preview.chapters" :key="c.index" class="cv-item px-4 py-3">
-            <div class="text-sm font-medium">{{ c.index }}. {{ c.title }}</div>
-            <div class="meta mt-1 tabular">
-              <span v-if="c.volume">{{ c.volume }} · </span>{{ c.char_count }} 字
-            </div>
-            <div class="meta mt-1 line-clamp-2">{{ c.preview }}</div>
-          </li>
-        </ul>
-      </div>
+      <div v-else-if="preview" class="space-y-4">
+        <div class="panel p-5 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label">标题</label>
+            <input v-model="title" class="input" />
+          </div>
+          <div>
+            <label class="label">作者</label>
+            <input v-model="author" class="input" />
+          </div>
+          <div>
+            <label class="label">题材</label>
+            <select v-model="genre" class="input">
+              <option>玄幻</option>
+              <option>都市</option>
+              <option>言情</option>
+            </select>
+          </div>
+          <div class="meta self-end tabular">共 {{ preview.chapter_count }} 章 · {{ preview.total_chars }} 字</div>
+        </div>
 
-      <div class="flex gap-3">
-        <button class="btn-ghost" :disabled="busy" @click="step = 'upload'">返回</button>
-        <button class="btn" :disabled="busy" @click="confirm">
-          {{ novelRole === 'reference' ? '作为参考入库' : '确认并入库' }}
-        </button>
+        <div class="panel overflow-hidden">
+          <div class="panel-head">分章预览</div>
+          <ul class="max-h-96 overflow-auto list-divide">
+            <li v-for="c in preview.chapters" :key="c.index" class="cv-item px-4 py-3">
+              <div class="text-sm font-medium">{{ c.index }}. {{ c.title }}</div>
+              <div class="meta mt-1 tabular">
+                <span v-if="c.volume">{{ c.volume }} · </span>{{ c.char_count }} 字
+              </div>
+              <div class="meta mt-1 line-clamp-2">{{ c.preview }}</div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="flex gap-3">
+          <button class="btn-ghost" type="button" :disabled="busy" @click="step = 'upload'">返回</button>
+          <button class="btn" type="button" :disabled="busy" @click="confirm">
+            {{ busy ? '入库中…' : novelRole === 'reference' ? '作为参考入库' : '作为原稿入库' }}
+          </button>
+        </div>
+        <p v-if="error" class="alert alert--danger">{{ error }}</p>
       </div>
-      <p v-if="error" class="alert alert--danger">{{ error }}</p>
     </div>
   </div>
 </template>
+
+<style scoped>
+.wizard-phase {
+  margin: 0 0 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+.mode-line {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.mode-line button {
+  padding: 0 0 0.2rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mode-line button.is-on {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.mode-line button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.wizard-pane {
+  animation: wizard-in 280ms ease;
+}
+
+@keyframes wizard-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+</style>

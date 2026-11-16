@@ -2,11 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { novelsApi, type Novel } from '@/api'
+import BlankNovelForm from '@/components/BlankNovelForm.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const novels = ref<Novel[]>([])
 const loading = ref(true)
 const error = ref('')
 const filter = ref<'manuscript' | 'reference' | 'all'>('manuscript')
+const showCreate = ref(false)
 const router = useRouter()
 
 function isReference(n: Novel) {
@@ -137,27 +140,35 @@ onMounted(load)
         <div v-for="i in 3" :key="i" class="skeleton h-[4.75rem]" />
       </div>
       <p v-else-if="error" class="alert alert--danger">{{ error }}</p>
-      <div v-else-if="!novels.length" class="empty-state home-empty">
-        <div>
-          <div class="font-display text-xl">书架还是空的</div>
-          <p class="page-desc">导入一部原文，几步就能进入续写。</p>
-        </div>
-        <button class="btn" type="button" @click="router.push('/import')">开始导入</button>
-      </div>
-      <div v-else-if="!visible.length && filter === 'manuscript'" class="empty-state home-empty">
-        <div>
-          <div class="font-display text-xl">默认续写里没有原稿</div>
-          <p class="page-desc">参考小说不会出现在这里。它们只拆文风，不进入正文。</p>
-        </div>
-        <button class="btn" type="button" @click="filter = 'reference'">查看参考</button>
-      </div>
-      <div v-else-if="!visible.length" class="empty-state home-empty">
-        <div>
-          <div class="font-display text-xl">还没有参考小说</div>
-          <p class="page-desc">导入时选「参考」，只拆结构与文风，不会变成可续写正文。</p>
-        </div>
-        <button class="btn" type="button" @click="router.push('/import')">导入参考</button>
-      </div>
+      <EmptyState
+        v-else-if="!novels.length"
+        title="书架还是空的"
+        body="导入一部原文就能续写。也可以先建一本空白原稿，从大纲写起。"
+        primary="导入小说"
+        primary-to="/import"
+        secondary="新建原稿"
+        @secondary="showCreate = true"
+      >
+        <BlankNovelForm v-if="showCreate" />
+      </EmptyState>
+      <EmptyState
+        v-else-if="!visible.length && filter === 'manuscript'"
+        title="默认续写里没有原稿"
+        body="参考小说只拆文风，不会出现在这里。导入一部原稿，或新建空白书开始写。"
+        primary="导入原稿"
+        primary-to="/import?role=manuscript"
+        secondary="新建原稿"
+        @secondary="showCreate = true"
+      >
+        <BlankNovelForm v-if="showCreate" />
+      </EmptyState>
+      <EmptyState
+        v-else-if="!visible.length"
+        title="还没有参考小说"
+        body="导入时选「参考」，只拆结构与文风，不会变成可续写正文。"
+        primary="导入参考"
+        primary-to="/import?role=reference"
+      />
 
       <ul v-else class="space-y-3">
         <li

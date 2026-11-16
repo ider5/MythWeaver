@@ -115,6 +115,13 @@ export const novelsApi = {
   list: (role?: NovelRole) =>
     api.get<Novel[]>('/novels', { params: role ? { role } : {} }),
   get: (id: number) => api.get<Novel>(`/novels/${id}`),
+  create: (body: {
+    title: string
+    author?: string
+    genre?: string
+    description?: string
+    role?: NovelRole
+  }) => api.post<Novel>('/novels', body),
   remove: (id: number) => api.delete(`/novels/${id}`),
   /** 导出全书章节正文；format: txt（默认）| md */
   exportUrl: (id: number, format: 'txt' | 'md' = 'txt') =>

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { novelsApi, outlineApi, tasksApi, type Novel, type Outline, type OutlineItem } from '@/api'
+import EmptyState from '@/components/EmptyState.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import { useRafText } from '@/composables/useRafText'
 
@@ -41,7 +42,10 @@ const runCritic = ref(true)
 const maxCriticRounds = ref(2)
 const novelMeta = ref<Novel | null>(null)
 const novelLoaded = ref(false)
+const planReady = ref(false)
 const isReference = computed(() => novelMeta.value?.role === 'reference')
+const hasWritePlan = computed(() => (outline.value?.items?.length || 0) > 0)
+const noChapters = computed(() => (novelMeta.value?.chapter_count || 0) === 0)
 /** 用户可覆盖的本章目标字数 */
 const targetChars = ref(3000)
 const targetTouched = ref(false)
@@ -358,14 +362,20 @@ async function loadNovelMeta() {
 async function load() {
   await loadNovelMeta()
   if (isReference.value) return
-  const { data } = await outlineApi.list(novelId)
-  outlines.value = data
-  const prevItemId = selected.value?.id
-  outline.value = data.find((o) => o.status === 'confirmed') || data[0] || null
-  const items = outline.value?.items || []
-  selected.value =
-    items.find((i) => i.id === prevItemId) || pendingItems.value[0] || items[0] || null
-  await loadChapterForItem(selected.value)
+  try {
+    const { data } = await outlineApi.list(novelId)
+    outlines.value = data
+    const prevItemId = selected.value?.id
+    outline.value = data.find((o) => o.status === 'confirmed') || data[0] || null
+    const items = outline.value?.items || []
+    selected.value =
+      items.find((i) => i.id === prevItemId) || pendingItems.value[0] || items[0] || null
+    await loadChapterForItem(selected.value)
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail || e?.message || '大纲加载失败'
+  } finally {
+    planReady.value = true
+  }
 }
 
 async function startGenerate() {
@@ -638,7 +648,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="!novelLoaded" class="skeleton h-40" aria-busy="true" />
+  <div v-if="!novelLoaded || (!isReference && !planReady)" class="skeleton h-40" aria-busy="true" />
   <div v-else-if="isReference" class="panel p-8 max-w-xl">
     <div class="kicker mb-2">参考</div>
     <h2 class="font-display text-2xl">不会进入续写</h2>
@@ -646,6 +656,21 @@ onUnmounted(() => {
       这是参考小说。章节只用来拆文风和设定，不会变成可续写正文，也不能导出成书。
     </p>
     <RouterLink class="btn mt-5" :to="`/novels/${novelId}/bible`">查看拆解</RouterLink>
+  </div>
+  <div v-else-if="!hasWritePlan">
+    <p v-if="error" class="alert alert--danger">{{ error }}</p>
+    <EmptyState
+      :title="noChapters ? '还没有章节' : '还没有可写的下一章'"
+      :body="
+        noChapters
+          ? '这本书还是空的。先生成大纲再写第一章；若已有原文，回到导入。'
+          : '原文已经入库。生成并确认大纲后，才能从这里续写下一章。'
+      "
+      primary="去生成大纲"
+      :primary-to="`/novels/${novelId}/outline`"
+      :secondary="noChapters ? '导入原文' : undefined"
+      secondary-to="/import"
+    />
   </div>
   <div v-else class="grid lg:grid-cols-[16.5rem_minmax(0,1fr)] gap-6">
     <aside class="panel p-2.5 space-y-0.5 max-h-[calc(100vh-7rem)] overflow-auto lg:sticky lg:top-[4.5rem]">
