@@ -76,17 +76,26 @@ npm run dev
 
 浏览器打开 Vite 提示的地址（默认 `http://localhost:5173`）。开发模式下 `/api` 会代理到 `http://localhost:8000`。
 
-### 4. Docker 一键启动（可选）
+### 4. 打包与一键部署（推荐自托管）
 
-需已安装 Docker Compose。先按上文准备 `backend/.env`（勿把密钥写进镜像）。
+先准备 `backend/.env`（从 `backend/.env.example` 复制，勿把密钥写进镜像）。
+
+**一条命令拉起 API + UI（Docker）：**
 
 ```bash
-docker compose up --build
+./scripts/package.sh docker   # 等价于构建镜像
+docker compose up --build -d
 ```
 
-浏览器打开 `http://localhost:8080`。nginx 将 `/api` 反代到后端；数据目录挂载到命名卷 `mythweaver-data`。后端健康检查使用 `/api/health`。
+浏览器打开 **http://localhost:8080**。nginx 将 `/api` 反代到后端；数据在卷 `mythweaver-data`。后端健康检查：`/api/health`。
 
-对标本地写作工具的部署体验：尽量用一条命令拉起 API + UI（见 `docs` 中的同行对标说明）。
+仅打包前端静态资源（自行挂 nginx）：
+
+```bash
+./scripts/package.sh dist   # 输出到 dist/release/web
+```
+
+对标 show-me-the-story 一类本地工具：尽量一条命令可写。
 
 ## 基本使用流程
 
