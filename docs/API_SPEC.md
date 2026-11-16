@@ -13,7 +13,14 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 ## LLM 厂商预设
 
 - `GET /api/providers` → `{ presets: [{ id, label, base_url, default_model, models, docs_url, notes }] }`
-- `POST /api/providers/test` → body `{ vendor_id?, api_key, base_url?, model? }`；响应 `{ ok, error?, latency_ms?, reply?, base_url?, model? }`。密钥仅用于本次探测，不落库。
+- `POST /api/providers/test` → body `{ vendor_id?, api_key, base_url?, model? }`；响应 `{ ok, error?, latency_ms?, reply?, base_url?, model? }`。这次探测的密钥不落库。
+- `GET /api/providers/active` → 当前生效连接（`source`: `env` | `profile`）。含 provider、base_url、模型、向量维度；密钥只回 `generation_key` / `summary_key` / `embedding_key` 的 `{ mode: anonymous|keyed, mask }`，没有明文。
+- `GET /api/providers/profiles` → `{ profiles: [...] }`，字段同上，另有 `id`、`name`、`is_active`。
+- `POST /api/providers/profiles` → `{ name, from_current?, activate?, ... }`。`from_current: true` 把正在生效的地址、模型和密钥存成新配置（密钥仍只回掩码）。否则提交续写与向量字段。
+- `PATCH /api/providers/profiles/{id}` → 改名或改字段。密钥字段省略则保留，`""` 清空。
+- `POST /api/providers/profiles/{id}/activate` → 启用。续写、摘要、向量立刻改走该配置。
+- `POST /api/providers/profiles/{id}/update-from-current` → 用当前生效配置覆盖这条，不切换。
+- `DELETE /api/providers/profiles/{id}` → 删除。删掉正在用的那条后回到 `.env`。配置存在本机 SQLite。
 
 ## 小说
 

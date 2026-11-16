@@ -137,6 +137,12 @@ async def init_db() -> None:
     else:
         logger.warning("sqlite-vec 不可用，向量检索将使用 JSON 余弦回退")
 
+    assert SessionLocal is not None
+    async with SessionLocal() as session:
+        from app.services.llm_profiles import reload_active_profile
+
+        await reload_active_profile(session)
+
 
 async def _ensure_schema_columns(conn) -> None:
     """为已有 SQLite 库补齐 create_all 不会添加的列。"""

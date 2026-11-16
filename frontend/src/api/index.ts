@@ -404,8 +404,78 @@ export interface ConnectionTestResult {
   model?: string | null
 }
 
+export interface KeyStatus {
+  mode: 'anonymous' | 'keyed'
+  mask: string | null
+}
+
+export interface LLMProfile {
+  id: number
+  name: string
+  vendor_id: string | null
+  is_active: boolean
+  summary_follows_generation: boolean
+  generation_provider: string
+  generation_base_url: string
+  generation_model: string
+  generation_key: KeyStatus
+  summary_provider: string
+  summary_base_url: string
+  summary_model: string
+  summary_key: KeyStatus
+  embedding_base_url: string
+  embedding_model: string
+  embedding_dims: number
+  embedding_key: KeyStatus
+}
+
+export interface ActiveLLMSettings {
+  source: 'env' | 'profile'
+  profile_id: number | null
+  profile_name: string | null
+  vendor_id: string | null
+  summary_follows_generation: boolean
+  generation_provider: string
+  generation_base_url: string
+  generation_model: string
+  generation_key: KeyStatus
+  summary_provider: string
+  summary_base_url: string
+  summary_model: string
+  summary_key: KeyStatus
+  embedding_base_url: string
+  embedding_model: string
+  embedding_dims: number
+  embedding_key: KeyStatus
+  vec_dims: number
+  dims_mismatch: boolean
+}
+
 export const providersApi = {
   list: () => api.get<{ presets: ProviderPreset[] }>('/providers'),
+  active: () => api.get<ActiveLLMSettings>('/providers/active'),
+  profiles: () => api.get<{ profiles: LLMProfile[] }>('/providers/profiles'),
+  createProfile: (body: {
+    name: string
+    from_current?: boolean
+    activate?: boolean
+    vendor_id?: string | null
+    summary_follows_generation?: boolean
+    generation_provider?: string
+    generation_base_url?: string
+    generation_api_key?: string
+    generation_model?: string
+    embedding_base_url?: string
+    embedding_api_key?: string
+    embedding_model?: string
+    embedding_dims?: number | null
+  }) => api.post<LLMProfile>('/providers/profiles', body),
+  updateProfile: (id: number, body: { name?: string }) =>
+    api.patch<LLMProfile>(`/providers/profiles/${id}`, body),
+  activateProfile: (id: number) => api.post<LLMProfile>(`/providers/profiles/${id}/activate`),
+  updateProfileFromCurrent: (id: number) =>
+    api.post<LLMProfile>(`/providers/profiles/${id}/update-from-current`),
+  deleteProfile: (id: number) => api.delete<{ message: string }>(`/providers/profiles/${id}`),
   test: (body: {
     vendor_id?: string | null
     api_key: string

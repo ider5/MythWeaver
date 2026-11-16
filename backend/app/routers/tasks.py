@@ -20,6 +20,7 @@ from app.schemas.tasks import (
     StageRouteOut,
     TaskOut,
 )
+from app.services.llm_profiles import effective_llm
 from app.services.tasks import TaskNotFound, TaskStateError, get_task_queue
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -204,17 +205,18 @@ def _stage_routes(s) -> list[StageRouteOut]:
 
 @router.get("/config", response_model=ConfigOut)
 async def get_config():
-    s = get_settings()
+    base = get_settings()
+    s = effective_llm()
     return ConfigOut(
         summary_provider=s.summary_provider,
         summary_model=s.summary_model,
         generation_provider=s.generation_provider,
         generation_model=s.generation_model,
         embedding_model=s.embedding_model,
-        context_token_budget=s.context_token_budget,
-        generation_max_tokens=s.generation_max_tokens,
-        chapter_segment_threshold=s.chapter_segment_threshold,
-        segment_target_chars=s.segment_target_chars,
+        context_token_budget=base.context_token_budget,
+        generation_max_tokens=base.generation_max_tokens,
+        chapter_segment_threshold=base.chapter_segment_threshold,
+        segment_target_chars=base.segment_target_chars,
         has_summary_key=_key_configured(s.summary_api_key),
         has_generation_key=_key_configured(s.generation_api_key),
         has_embedding_key=_key_configured(s.embedding_api_key),

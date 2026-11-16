@@ -48,14 +48,18 @@ class LLMClient:
         self.limiter = get_rate_limiter()
 
     def summary_endpoint(self) -> ModelEndpoint:
-        s = self.settings
-        return ModelEndpoint(s.summary_provider, s.summary_base_url, s.summary_api_key, s.summary_model)
+        from app.services.llm_profiles import effective_llm
+
+        s = effective_llm()
+        provider: Provider = "anthropic" if s.summary_provider == "anthropic" else "openai"
+        return ModelEndpoint(provider, s.summary_base_url, s.summary_api_key, s.summary_model)
 
     def generation_endpoint(self) -> ModelEndpoint:
-        s = self.settings
-        return ModelEndpoint(
-            s.generation_provider, s.generation_base_url, s.generation_api_key, s.generation_model
-        )
+        from app.services.llm_profiles import effective_llm
+
+        s = effective_llm()
+        provider: Provider = "anthropic" if s.generation_provider == "anthropic" else "openai"
+        return ModelEndpoint(provider, s.generation_base_url, s.generation_api_key, s.generation_model)
 
     async def chat(
         self,
@@ -105,7 +109,9 @@ class LLMClient:
 
     async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
         """返回 (vectors, input_tokens)。"""
-        s = self.settings
+        from app.services.llm_profiles import effective_llm
+
+        s = effective_llm()
         if not texts:
             return [], 0
         est = sum(count_tokens(t) for t in texts)
