@@ -52,6 +52,7 @@ const novelMeta = ref<Novel | null>(null)
 const novelLoaded = ref(false)
 const planReady = ref(false)
 const isReference = computed(() => novelMeta.value?.role === 'reference')
+const isScratch = computed(() => novelMeta.value?.origin === 'scratch')
 const hasWritePlan = computed(() => (outline.value?.items?.length || 0) > 0)
 const noChapters = computed(() => (novelMeta.value?.chapter_count || 0) === 0)
 /** 用户可覆盖的本章目标字数 */
@@ -726,16 +727,18 @@ onUnmounted(() => {
   <div v-else-if="!hasWritePlan">
     <p v-if="error" class="alert alert--danger">{{ error }}</p>
     <EmptyState
-      :title="noChapters ? '还没有章节' : '还没有可写的下一章'"
+      :title="isScratch ? '开篇还没写出来' : noChapters ? '还没有章节' : '还没有可写的下一章'"
       :body="
-        noChapters
-          ? '这本书还是空的。先生成大纲再写第一章；若已有原文，回到导入。'
-          : '原文已经入库。生成并确认大纲后，才能从这里续写下一章。'
+        isScratch
+          ? '这是从零开书，不走导入。回到开书，用前提播种设定并写出开篇。'
+          : noChapters
+            ? '这本书还是空的。先生成大纲再写第一章；若已有原文，回到导入。'
+            : '原文已经入库。生成并确认大纲后，才能从这里续写下一章。'
       "
       primary="去生成大纲"
       :primary-to="`/novels/${novelId}/outline`"
-      :secondary="noChapters ? '导入原文' : undefined"
-      secondary-to="/import"
+      :secondary="isScratch ? '回到开书' : noChapters ? '导入原文' : undefined"
+      :secondary-to="isScratch ? `/create?novel=${novelId}` : '/import'"
     />
   </div>
   <div v-else class="wb-write">
@@ -837,9 +840,12 @@ onUnmounted(() => {
           />
         </div>
         <p class="meta wb-tune__note">
-          原作均长
-          <span v-if="originalAvgChars">约 {{ originalAvgChars }} 字</span>
-          <span v-else>尚未统计</span>
+          <template v-if="isScratch">开书默认约 3000 字</template>
+          <template v-else>
+            原作均长
+            <span v-if="originalAvgChars">约 {{ originalAvgChars }} 字</span>
+            <span v-else>尚未统计</span>
+          </template>
           <span v-if="willSegment"> · 长章按要点分段，只审查不整章重写</span>
         </p>
         <label class="check">

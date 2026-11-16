@@ -25,6 +25,7 @@ from app.services.chapter_length import (
 )
 from app.services.ingestion import incremental_update_chapter
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
+from app.services.scratch import is_scratch_origin
 from app.services.retrieval import delete_chapter_embedding
 from app.utils.chinese_text import count_chars
 from app.utils.json_extract import extract_json
@@ -35,6 +36,21 @@ logger = logging.getLogger(__name__)
 def resolve_target_chapter_index(*, start_from_chapter: int, order: int) -> int:
     """大纲条目对应的绝对章号：start_from_chapter + order - 1。"""
     return int(start_from_chapter) + int(order) - 1
+
+
+async def _sync_scratch_volume(session: AsyncSession, novel: Novel) -> None:
+    """开书没有原稿入库，生成成功后直接用已写章节刷新册数。"""
+    if not is_scratch_origin(getattr(novel, "origin", None)):
+        return
+    rows = (
+        await session.execute(
+            select(Chapter.index, Chapter.char_count).where(Chapter.novel_id == novel.id)
+        )
+    ).all()
+    if not rows:
+        return
+    novel.chapter_count = max(int(index) for index, _count in rows)
+    novel.total_chars = sum(int(count or 0) for _index, count in rows)
 
 
 async def find_chapter_by_outline_item(
@@ -255,10 +271,13 @@ async def stream_generate_chapter(
                     "message": f"正在撰写第 {seg.index}/{seg.total} 段…",
                 }
             written = "\n\n".join(parts)
+            premise = (novel.premise or "").strip() if is_scratch_origin(novel.origin) else ""
             prompt = render(
                 "generation.j2",
                 genre=novel.genre or "玄幻",
                 genre_hints=ctx.genre_hints,
+                opening_brief=f"前提：{premise}" if premise else "",
+                has_prior_chapters=bool((ctx.recent_chapters or "").strip()),
                 story_bible=ctx.story_bible or "（空）",
                 memory=ctx.memory or "（空）",
                 style_samples=ctx.style_samples or "（无）",
@@ -386,6 +405,7 @@ async def stream_generate_chapter(
 
         item.status = "done"
         novel.status = "ready"
+        await _sync_scratch_volume(session, novel)
         await session.commit()
 
         yield {

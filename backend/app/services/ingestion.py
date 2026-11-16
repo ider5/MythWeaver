@@ -21,6 +21,7 @@ from app.services import story_bible as bible_svc
 from app.services import writeback as writeback_svc
 from app.services.chapter_length import refresh_original_chapter_stats
 from app.services.novel_role import normalize_role
+from app.services.scratch import SCRATCH_INGEST_DETAIL, ScratchError, is_scratch_origin
 from app.services.retrieval import embed_and_store, embed_and_store_batch
 from app.services.tasks import TaskProgress, get_task_queue
 from app.utils.chinese_text import (
@@ -157,6 +158,8 @@ async def start_ingestion(session: AsyncSession, novel_id: int):
     novel = await session.get(Novel, novel_id)
     if novel is None:
         raise ValueError("小说不存在")
+    if is_scratch_origin(novel.origin):
+        raise ScratchError(SCRATCH_INGEST_DETAIL, 409)
     queue = get_task_queue()
     existing = await queue.find_active(session, task_type="ingest", novel_id=novel_id)
     if existing is not None:

@@ -152,6 +152,16 @@ async def _ensure_schema_columns(conn) -> None:
                 "ALTER TABLE novels ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'manuscript'"
             )
         )
+    if "origin" not in names:
+        await conn.execute(
+            text(
+                "ALTER TABLE novels ADD COLUMN origin VARCHAR(16) NOT NULL DEFAULT 'import'"
+            )
+        )
+    if "premise" not in names:
+        await conn.execute(text("ALTER TABLE novels ADD COLUMN premise TEXT"))
+    if "writing_style" not in names:
+        await conn.execute(text("ALTER TABLE novels ADD COLUMN writing_style TEXT"))
 
     item_rows = (await conn.execute(text("PRAGMA table_info(outline_items)"))).fetchall()
     item_names = {r[1] for r in item_rows}

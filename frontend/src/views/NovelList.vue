@@ -2,18 +2,20 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { novelsApi, type Novel } from '@/api'
-import BlankNovelForm from '@/components/BlankNovelForm.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const novels = ref<Novel[]>([])
 const loading = ref(true)
 const error = ref('')
 const filter = ref<'manuscript' | 'reference' | 'all'>('manuscript')
-const showCreate = ref(false)
 const router = useRouter()
 
 function isReference(n: Novel) {
   return n.role === 'reference'
+}
+
+function isScratch(n: Novel) {
+  return n.origin === 'scratch'
 }
 
 const manuscriptCount = computed(() => novels.value.filter((n) => !isReference(n)).length)
@@ -53,7 +55,23 @@ function openNovel(n: Novel) {
     router.push(`/novels/${n.id}/bible`)
     return
   }
+  if (isScratch(n) && !(n.chapter_count > 0)) {
+    router.push({ path: '/create', query: { novel: String(n.id) } })
+    return
+  }
   router.push(`/novels/${n.id}/write`)
+}
+
+function kindLabel(n: Novel) {
+  if (isReference(n)) return '参考'
+  if (isScratch(n)) return '开书'
+  return '续写'
+}
+
+function actionLabel(n: Novel) {
+  if (isReference(n)) return '拆解'
+  if (isScratch(n)) return n.chapter_count > 0 ? '继续' : '开书'
+  return '续写'
 }
 
 function statusLabel(s: string) {
@@ -61,6 +79,8 @@ function statusLabel(s: string) {
   if (s === 'ingesting') return '入库中'
   if (s === 'generating') return '生成中'
   if (s === 'imported') return '已导入'
+  if (s === 'blank') return '待设定'
+  if (s === 'seeded') return '已播种'
   return s
 }
 
@@ -81,26 +101,35 @@ onMounted(load)
   <div class="home">
     <section class="home-hero" aria-labelledby="home-brand">
       <p id="home-brand" class="home-brand">MythWeaver</p>
-      <h1 class="home-headline">长篇续写，压进一条清晰路径</h1>
+      <h1 class="home-headline">从零开书，或把长篇接着写</h1>
       <span class="home-rule" aria-hidden="true"></span>
-      <p class="home-lede">导入原稿或参考，入库压缩后确认大纲，再流式续写。界面只留必要动作。</p>
-      <div class="home-cta">
-        <button class="btn" type="button" @click="router.push('/import')">导入续写</button>
-        <button
-          v-if="manuscriptNovels.length"
-          class="btn-ghost"
-          type="button"
-          @click="openNovel(manuscriptNovels[0])"
-        >
-          打开最近原稿
+      <p class="home-lede">开书只要前提和文风。续写仍从导入原稿开始。两条路径分开。</p>
+      <div class="home-cta path-grid">
+        <button class="path-card" type="button" @click="router.push('/create')">
+          <span class="path-card__kicker">开书</span>
+          <span class="path-card__title">从一句前提写起</span>
+          <span class="path-card__copy">设定、大纲、开篇。不需要原稿。</span>
+        </button>
+        <button class="path-card path-card--alt" type="button" @click="router.push('/import')">
+          <span class="path-card__kicker">续写</span>
+          <span class="path-card__title">把已有原文接下去</span>
+          <span class="path-card__copy">导入、入库、大纲，再流式续写。</span>
         </button>
       </div>
+      <p v-if="manuscriptNovels.length" class="home-resume">
+        <button class="btn-ghost btn-sm" type="button" @click="openNovel(manuscriptNovels[0])">
+          打开最近一本书
+        </button>
+      </p>
     </section>
 
     <section class="home-shelf" aria-labelledby="shelf-title">
       <div class="home-shelf__head">
         <h2 id="shelf-title" class="home-shelf__title">作品</h2>
-        <button class="btn-ghost btn-sm" type="button" @click="router.push('/import')">导入</button>
+        <div class="home-shelf__actions">
+          <button class="btn-ghost btn-sm" type="button" @click="router.push('/create')">开书</button>
+          <button class="btn-ghost btn-sm" type="button" @click="router.push('/import')">续写</button>
+        </div>
       </div>
 
       <div class="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="按用途筛选">
@@ -144,25 +173,21 @@ onMounted(load)
       <EmptyState
         v-else-if="!novels.length"
         title="书架还是空的"
-        body="导入一部原文就能续写。也可以先建一本空白原稿，从大纲写起。"
-        primary="导入小说"
-        primary-to="/import"
-        secondary="新建原稿"
-        @secondary="showCreate = true"
-      >
-        <BlankNovelForm v-if="showCreate" />
-      </EmptyState>
+        body="可以从一句前提开书，也可以导入原文续写。两条路不会混在一起。"
+        primary="从零开书"
+        primary-to="/create"
+        secondary="导入续写"
+        secondary-to="/import"
+      />
       <EmptyState
         v-else-if="!visible.length && filter === 'manuscript'"
-        title="默认续写里没有原稿"
-        body="参考小说只拆文风，不会出现在这里。导入一部原稿，或新建空白书开始写。"
-        primary="导入原稿"
-        primary-to="/import?role=manuscript"
-        secondary="新建原稿"
-        @secondary="showCreate = true"
-      >
-        <BlankNovelForm v-if="showCreate" />
-      </EmptyState>
+        title="这里还没有可写的书"
+        body="开书和续写都出现在原稿里。参考小说只拆文风，不会出现在这里。"
+        primary="从零开书"
+        primary-to="/create"
+        secondary="导入续写"
+        secondary-to="/import?role=manuscript"
+      />
       <EmptyState
         v-else-if="!visible.length"
         title="还没有参考小说"
@@ -182,8 +207,11 @@ onMounted(load)
           <div class="min-w-0">
             <div class="flex items-center gap-2 min-w-0">
               <div class="font-display text-lg leading-snug truncate">{{ n.title }}</div>
-              <span class="badge shrink-0" :class="isReference(n) ? 'badge--warn' : 'badge--ok'">
-                {{ isReference(n) ? '参考' : '原稿' }}
+              <span
+                class="badge shrink-0"
+                :class="isReference(n) ? 'badge--warn' : isScratch(n) ? 'badge--ok' : ''"
+              >
+                {{ kindLabel(n) }}
               </span>
               <span class="status-pill shrink-0" :class="statusTone(n.status)">{{
                 statusLabel(n.status)
@@ -198,14 +226,12 @@ onMounted(load)
           </div>
           <div class="flex gap-2 shrink-0" @click.stop>
             <button
-              v-if="!isReference(n)"
-              class="btn"
+              :class="isReference(n) ? 'btn-ghost' : 'btn'"
               type="button"
               @click="openNovel(n)"
             >
-              续写
+              {{ actionLabel(n) }}
             </button>
-            <button v-else class="btn-ghost" type="button" @click="openNovel(n)">拆解</button>
             <button
               v-if="!isReference(n)"
               class="btn-ghost"

@@ -6,15 +6,20 @@ export const api = axios.create({
 })
 
 export type NovelRole = 'manuscript' | 'reference'
+export type NovelOrigin = 'import' | 'scratch'
 
 export interface Novel {
   id: number
   title: string
-  author?: string
+  author?: string | null
   genre: string
   description?: string
   /** manuscript=原稿，可续写导出；reference=参考，不进入正文 */
   role?: NovelRole
+  /** import=导入续写；scratch=从零开书 */
+  origin?: NovelOrigin
+  premise?: string | null
+  writing_style?: string | null
   status: string
   total_chars: number
   chapter_count: number
@@ -141,6 +146,13 @@ export interface Outline {
   items: OutlineItem[]
 }
 
+export interface ScratchSeed {
+  novel: Novel
+  characters: Character[]
+  world_settings: WorldSetting[]
+  plot_threads: PlotThread[]
+}
+
 export const novelsApi = {
   list: (role?: NovelRole) =>
     api.get<Novel[]>('/novels', { params: role ? { role } : {} }),
@@ -152,6 +164,24 @@ export const novelsApi = {
     description?: string
     role?: NovelRole
   }) => api.post<Novel>('/novels', body),
+  update: (
+    id: number,
+    body: {
+      title?: string
+      author?: string | null
+      genre?: string
+      premise?: string
+      writing_style?: string
+    },
+  ) => api.patch<Novel>(`/novels/${id}`, body),
+  createScratch: (body: {
+    title: string
+    author?: string
+    genre?: string
+    premise: string
+    writing_style: string
+  }) => api.post<Novel>('/novels/scratch', body),
+  seedScratch: (id: number) => api.post<ScratchSeed>(`/novels/${id}/scratch/seed`),
   remove: (id: number) => api.delete(`/novels/${id}`),
   /** 导出全书章节正文；format: txt（默认）| md */
   exportUrl: (id: number, format: 'txt' | 'md' = 'txt') =>

@@ -26,9 +26,13 @@ from app.schemas.novel import (
     NovelCreate,
     NovelOut,
     NovelUpdate,
+    ScratchCreate,
+    ScratchSeedOut,
 )
 from app.services import ingestion
+from app.services import scratch as scratch_svc
 from app.services.chapter_length import refresh_original_chapter_stats
+from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
 from app.services.novel_role import (
     REFERENCE_EXPORT_DETAIL,
@@ -75,9 +79,13 @@ def _build_export_text(chapters: list[Chapter], fmt: str) -> str:
 @router.get("", response_model=list[NovelOut])
 async def list_novels(
     role: str | None = Query(default=None),
+    origin: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    """列出小说。`role=manuscript` 是续写默认来源；`reference` 不进入该列表。"""
+    """列出小说。`role=manuscript` 是续写默认来源；`reference` 不进入该列表。
+
+    `origin=scratch` 只返回从零开书；`import` 只返回导入续写。
+    """
     stmt = select(Novel).order_by(Novel.id.desc())
     if role is not None and role != "":
         try:
@@ -85,6 +93,12 @@ async def list_novels(
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         stmt = stmt.where(Novel.role == role)
+    if origin is not None and origin != "":
+        try:
+            origin = normalize_origin(origin)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        stmt = stmt.where(Novel.origin == origin)
     rows = (await session.execute(stmt)).scalars().all()
     return rows
 
@@ -96,6 +110,31 @@ async def create_novel(body: NovelCreate, session: AsyncSession = Depends(get_se
     await session.commit()
     await session.refresh(novel)
     return novel
+
+
+@router.post("/scratch", response_model=NovelOut)
+async def create_scratch(body: ScratchCreate, session: AsyncSession = Depends(get_session)):
+    """从零开书。不接收原稿，状态为 blank，直到播种设定。"""
+    try:
+        return await scratch_svc.create_scratch_novel(
+            session,
+            title=body.title,
+            genre=body.genre,
+            premise=body.premise,
+            writing_style=body.writing_style,
+            author=body.author,
+        )
+    except ScratchError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/{novel_id}/scratch/seed", response_model=ScratchSeedOut)
+async def seed_scratch(novel_id: int, session: AsyncSession = Depends(get_session)):
+    """用已保存的前提播种 Story Bible。导入续写的书返回 409。"""
+    try:
+        return await scratch_svc.seed_scratch_bible(session, novel_id)
+    except ScratchError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
 
 
 @router.get("/{novel_id}", response_model=NovelOut)
@@ -207,6 +246,8 @@ async def start_ingest(novel_id: int, session: AsyncSession = Depends(get_sessio
 
     try:
         task = await ingestion.start_ingestion(session, novel_id)
+    except ScratchError as e:
+        raise HTTPException(e.status_code, e.detail) from e
     except TaskDuplicateError as e:
         raise HTTPException(409, str(e)) from e
     except ValueError as e:

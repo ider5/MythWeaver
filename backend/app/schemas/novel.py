@@ -4,8 +4,10 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from app.schemas.common import ORMModel
+from app.schemas.story_bible import CharacterOut, PlotThreadOut, WorldSettingOut
 
 NovelRole = Literal["manuscript", "reference"]
+NovelOrigin = Literal["import", "scratch"]
 
 
 class NovelCreate(BaseModel):
@@ -22,6 +24,18 @@ class NovelUpdate(BaseModel):
     genre: Optional[str] = None
     description: Optional[str] = None
     role: Optional[NovelRole] = None
+    premise: Optional[str] = None
+    writing_style: Optional[str] = None
+
+
+class ScratchCreate(BaseModel):
+    """从零开书：前提、题材、文风，不上传原稿。"""
+
+    title: str = Field(..., min_length=1, max_length=256)
+    author: Optional[str] = None
+    genre: str = Field(default="玄幻", max_length=64)
+    premise: str = Field(..., min_length=8, max_length=4000)
+    writing_style: str = Field(..., min_length=2, max_length=1000)
 
 
 class NovelOut(ORMModel):
@@ -31,6 +45,9 @@ class NovelOut(ORMModel):
     genre: str
     description: Optional[str] = None
     role: NovelRole = "manuscript"
+    origin: NovelOrigin = "import"
+    premise: Optional[str] = None
+    writing_style: Optional[str] = None
     status: str
     total_chars: int
     chapter_count: int
@@ -38,6 +55,13 @@ class NovelOut(ORMModel):
     median_chapter_chars: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class ScratchSeedOut(BaseModel):
+    novel: NovelOut
+    characters: list[CharacterOut]
+    world_settings: list[WorldSettingOut]
+    plot_threads: list[PlotThreadOut]
 
 
 class ChapterPreview(BaseModel):

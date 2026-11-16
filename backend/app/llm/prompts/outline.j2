@@ -1,6 +1,16 @@
 你是网文大纲策划。基于已有小说信息，规划接下来 {{ chapter_count }} 章的续写大纲。
 题材：{{ genre }}
 {% if guidance %}用户指导：{{ guidance }}{% endif %}
+{% if premise %}
+开书前提：
+{{ premise }}
+{% endif %}
+{% if writing_style %}
+文风：{{ writing_style }}
+{% endif %}
+{% if is_scratch %}
+这是从零开书，没有已入库正文。第 {{ start_from_chinese }} 章就是开篇，不要假装前面还有章节。
+{% endif %}
 
 【章节编号（必须遵守）】
 - 小说已有 {{ existing_chapter_count }} 章入库。

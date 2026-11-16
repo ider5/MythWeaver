@@ -37,6 +37,7 @@ frontend (Vue3)  --HTTP/SSE-->  backend (FastAPI)
 ## 数据模型
 
 Novel.role：`manuscript`（原稿，默认可续写并导出）或 `reference`（参考，只入库拆文风/设定，不作为章节生成来源、不导出成书）  
+Novel.origin：`import`（导入后续写）或 `scratch`（从零开书；前提播种 Story Bible，不入库原稿）  
 Novel → Chapter → ChapterVersion（generated / critic_revised / user_edited）  
 Novel → Summary（chapter / volume）  
 Novel → Character / WorldSetting / PlotThread  
