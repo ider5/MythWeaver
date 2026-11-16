@@ -1,7 +1,7 @@
 # MythWeaver 同行对标报告
 
 更新时间：2026-11-17（Asia/Shanghai）  
-证据锚点：`origin/master` `663938f`（含已合并 PR #3–#28）  
+证据锚点：`origin/master` `ba83b0c`（含已合并 PR #3–#29）  
 基准产品：MythWeaver（`ider5/MythWeaver`）— 单机 FastAPI + Vue 3 网络小说续写  
 材料：仓库 README / `docs/` / 当前代码与测试。同行格沿用 [#19](https://github.com/ider5/MythWeaver/pull/19) 与 2026-11-16 笔记，本轮没有重爬对方仓库。
 
@@ -17,9 +17,8 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 2. **分发** 仍是 Docker Compose、Makefile、源码。没有安装包，也没有单二进制。
 3. **生成章回写** 可以勾选后写入，但没有原文出处。原稿入库仍自动合并设定。
 4. **界面只有中文。** README 双语不等于产品内双语写作。
-5. **导出** 目前是 txt / md。EPUB 在未合并的 [#29](https://github.com/ider5/MythWeaver/pull/29)。
-6. 没有版本历史、WebDAV、Skill 导入、项目 ZIP。世界地图、全自动导演、漫画 / 短剧不追。
-7. 没有同书样本的上下文 token 或一致性对照，不能称超越。
+5. 没有版本历史、WebDAV、Skill 导入、项目 ZIP。世界地图、全自动导演、漫画 / 短剧不追。
+6. 没有同书样本的上下文 token 或一致性对照，不能称超越。
 
 目标路径不变：对齐 Pagekin 的本地闭环、show-me-the-story 的自托管；Biz Novel Studio 只作能力上限，不复制多媒体延展。
 
@@ -62,7 +61,7 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 | 匿名 OpenAI 兼容端点 | ● 见 §3.1（#22） | ◐ Ollama / BYOK | 未复测 | ◐ OpenAI 兼容 |
 | 本机外观 | ● 见 §3.1（#26） | 未复测 | 未复测 | 未复测 |
 | 会话内导航保持 | ● 见 §3.1（#27）。刷新后草稿丢失 | 未复测 | 未复测 | 未复测 |
-| 导出成书 | ◐ txt / md。EPUB 未合并（#29） | 未复测 | 未复测 | 未复测 |
+| 导出成书 | ● txt / md / EPUB 2（#29）。参考本 409。首页按钮仍只出 TXT | 未复测 | 未复测 | 未复测 |
 
 ### 3.1 Round 2 落到代码里的行为
 
@@ -82,6 +81,7 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 | 外观与动效 | `/settings/appearance`：薄雾 / 墨色、四种强调色、标准 / 紧凑。写入本机 `localStorage`（`mythweaver.ui`） | 不同步到服务器。动效跟随系统 `prefers-reduced-motion`，设置页没有动效开关 | [#26](https://github.com/ider5/MythWeaver/pull/26) `useUiPrefs.ts` |
 | 导航保持与任务去重 | 顶栏 KeepAlive（最多 12，键为路径前三段，同一本书共用工作区壳）。分区内再 KeepAlive（最多 8）。Pinia 记住大纲选中、筛选、任务筛选和导入草稿。同书同类型已有 pending/running 时再入队返回 409 | 刷新后 Pinia 草稿丢失。外观偏好除外，那个在 localStorage | [#27](https://github.com/ider5/MythWeaver/pull/27) `test_duplicate_ingest_rejected` |
 | 文案与提示词 | 界面短句说明这一屏做什么。`anti_ai.j2` 改成先写场面、少讲解、少套句。禁写词表还在 | 规则仍写死在模板里，不是资产库 | [#28](https://github.com/ider5/MythWeaver/pull/28) `anti_ai.j2` |
+| 导出 EPUB | 工作台可下 TXT、MD、EPUB。EPUB 2 自打包（zip + xhtml + ncx），无第三方库。章按序号 | 参考本仍 409。首页「导出」仍是 TXT。测试只检查 zip 结构，没有用阅读器打开 | [#29](https://github.com/ider5/MythWeaver/pull/29) `backend/tests/test_export.py` |
 
 ## 4. MythWeaver 相对优势
 
@@ -92,17 +92,18 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 
 匿名端点和本机外观是可用性，不计入相对 Pagekin / Biz 的优势。Pagekin 已有 Ollama 与 BYOK。
 
-## 5. 已关闭差距（#3–#28）
+## 5. 已关闭差距（#3–#29）
 
-CI、Docker / 打包、模型预设、蓝图字段、LangGraph Critic、修稿勾选、首页与工作区视觉、参考导入、任务取消 / 重试与任务中心、Bible 可视化与编辑、批量导演、阶段路由 / 用量、导入向导与空状态、写作 / 大纲台、生成章回写确认、匿名兼容端点、中英 README、从零开书分流、本机外观、工作区 KeepAlive 与任务去重、提示词与界面句子收紧。
+CI、Docker / 打包、模型预设、蓝图字段、LangGraph Critic、修稿勾选、首页与工作区视觉、参考导入、任务取消 / 重试与任务中心、Bible 可视化与编辑、批量导演、阶段路由 / 用量、导入向导与空状态、写作 / 大纲台、生成章回写确认、匿名兼容端点、中英 README、从零开书分流、本机外观、工作区 KeepAlive 与任务去重、提示词与界面句子收紧、原稿 EPUB 导出。
 
 ## 6. 仍敞开
+
+写这份清单时，仓库没有未合并的 PR。下面是能力缺口，不是排队中的改动。
 
 - 可编辑的写法 / 去 AI 资产库（#28 没有做这个）
 - 安装包或单二进制
 - 事实出处、项目 ZIP、版本历史、WebDAV、Skill 导入
 - 产品内双语写作；界面多语言
-- 导出 EPUB：[#29](https://github.com/ider5/MythWeaver/pull/29) 未合并。master 上仍是 txt / md
 - Round 2 运行录屏。仓库里没有。Round 1 只在项目 Context `media/mythweaver-running-demo.mp4`
 - 世界地图、全自动导演、漫画 / 短剧：上限参考，不追
 - 同书样本对比，用来判断是否超越

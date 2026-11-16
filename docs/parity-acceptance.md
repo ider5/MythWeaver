@@ -2,7 +2,7 @@
 
 对照 [peer-benchmark.md](./peer-benchmark.md)。  
 更新：2026-11-17（Asia/Shanghai）  
-证据锚点：`origin/master` `663938f`
+证据锚点：`origin/master` `ba83b0c`
 
 ## 选定基准
 
@@ -27,7 +27,7 @@
 
 ## Round 2 已合并（#16–#28）
 
-[#19](https://github.com/ider5/MythWeaver/pull/19) 收到 #18。下表从那之后补到 `663938f`。
+[#19](https://github.com/ider5/MythWeaver/pull/19) 收到 #18。下表从那之后补到 `ba83b0c`。
 
 | 项 | 现状 | 证据 |
 |----|------|------|
@@ -43,6 +43,7 @@
 | 外观偏好 | ● 本机主题、强调色、疏密。无应用内动效开关 | [#26](https://github.com/ider5/MythWeaver/pull/26) `frontend/src/composables/useUiPrefs.ts` |
 | 导航保持与任务去重 | ● 会话内 KeepAlive + Pinia 草稿。同书同类型进行中任务 409。刷新不保留草稿 | [#27](https://github.com/ider5/MythWeaver/pull/27) `backend/tests/test_task_cancel.py` |
 | 文案与提示词 | ● 界面和 `anti_ai.j2` 改成短约束。不是可编辑资产库 | [#28](https://github.com/ider5/MythWeaver/pull/28) |
+| 原稿 EPUB | ● 工作台 TXT / MD / EPUB。EPUB 2，无第三方库。参考本 409。首页按钮仍只出 TXT | [#29](https://github.com/ider5/MythWeaver/pull/29) `backend/tests/test_export.py` |
 
 更细的边界写在 [peer-benchmark.md](./peer-benchmark.md) §3.1。
 
@@ -75,11 +76,12 @@
 
 ## 仍敞开（不撤销「P0–P1 达到」）
 
+写这份清单时没有未合并的 PR。下面是能力缺口。
+
 - 可编辑写法 / 去 AI 资产库。#28 只改了模板措辞
 - 安装包或单二进制
 - 事实出处、项目 ZIP、版本历史、WebDAV、Skill 导入
 - 界面多语言，以及产品内双语写作
-- 导出 EPUB：[#29](https://github.com/ider5/MythWeaver/pull/29) 仍开放，master 上是 txt / md
 - Round 2 运行录屏未入库。Round 1 录屏在项目 Context `media/mythweaver-running-demo.mp4`，不在本仓库
 - 「超越」所需的同书样本对照
 
