@@ -75,6 +75,18 @@ npm run dev
 
 浏览器打开 Vite 提示的地址（默认 `http://localhost:5173`）。开发模式下 `/api` 会代理到 `http://localhost:8000`。
 
+### 4. Docker 一键启动（可选）
+
+需已安装 Docker Compose。先按上文准备 `backend/.env`（勿把密钥写进镜像）。
+
+```bash
+docker compose up --build
+```
+
+浏览器打开 `http://localhost:8080`。nginx 将 `/api` 反代到后端；数据目录挂载到命名卷 `mythweaver-data`。后端健康检查使用 `/api/health`。
+
+对标本地写作工具的部署体验：尽量用一条命令拉起 API + UI（见 `docs` 中的同行对标说明）。
+
 ## 基本使用流程
 
 1. **导入**：上传小说文本（或目录），预览分章后确认入库
