@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { useChromeCopy } from '@/lib/chromeCopy'
 
 const route = useRoute()
+const copy = useChromeCopy()
 const wide = computed(() => String(route.path).startsWith('/novels/'))
 const home = computed(() => route.name === 'home')
 // 同一本书的工作台共用一个缓存。入库进度是另一个页面，不能跟工作台抢同一个 key。
@@ -21,31 +23,31 @@ const aliveKey = computed(() => {
       </RouterLink>
       <div class="header-tools">
         <nav class="app-nav">
-          <RouterLink to="/" class="nav-link">作品</RouterLink>
-          <RouterLink to="/create" class="nav-link">开书</RouterLink>
-          <RouterLink to="/import" class="nav-link">续写</RouterLink>
-          <RouterLink to="/settings/providers" class="nav-link">LLM 设置</RouterLink>
+          <RouterLink to="/" class="nav-link">{{ copy.navWorks }}</RouterLink>
+          <RouterLink to="/create" class="nav-link">{{ copy.navStart }}</RouterLink>
+          <RouterLink to="/import" class="nav-link">{{ copy.navContinue }}</RouterLink>
+          <RouterLink to="/settings/providers" class="nav-link">{{ copy.navLlm }}</RouterLink>
         </nav>
         <RouterLink
           to="/settings/skills"
           class="header-tool"
           :aria-current="route.path.startsWith('/settings/skills') ? 'page' : undefined"
         >
-          写法
+          {{ copy.navCraft }}
         </RouterLink>
         <RouterLink
           to="/settings/health"
           class="header-tool"
           :aria-current="route.path.startsWith('/settings/health') ? 'page' : undefined"
         >
-          状态
+          {{ copy.navStatus }}
         </RouterLink>
         <RouterLink
           to="/settings/appearance"
           class="header-tool"
           :aria-current="route.path.startsWith('/settings/appearance') ? 'page' : undefined"
         >
-          外观
+          {{ copy.navLook }}
         </RouterLink>
       </div>
     </header>

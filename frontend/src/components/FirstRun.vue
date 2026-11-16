@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import HealthGlance from '@/components/HealthGlance.vue'
 import type { HealthReport } from '@/api'
+import { useChromeCopy } from '@/lib/chromeCopy'
 
 defineProps<{
   report: HealthReport | null
@@ -13,6 +14,7 @@ defineProps<{
 defineEmits<{ dismiss: [] }>()
 
 const step = ref<'llm' | 'path'>('llm')
+const copy = useChromeCopy()
 </script>
 
 <template>
@@ -78,11 +80,11 @@ const step = ref<'llm' | 'path'>('llm')
       </p>
       <div class="home-cta">
         <RouterLink class="home-go" to="/create">
-          开书
+          {{ copy.homeStart }}
           <span class="home-go__mark" aria-hidden="true"></span>
         </RouterLink>
         <RouterLink class="home-go home-go--quiet" to="/import">
-          续写
+          {{ copy.homeContinue }}
           <span class="home-go__mark" aria-hidden="true"></span>
         </RouterLink>
       </div>

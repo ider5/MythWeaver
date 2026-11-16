@@ -4,10 +4,14 @@ import {
   useUiPrefs,
   type UiAccent,
   type UiDensity,
+  type UiLocale,
   type UiTheme,
 } from '@/composables/useUiPrefs'
+import { useChromeCopy } from '@/lib/chromeCopy'
 
-const { theme, accent, density, setTheme, setAccent, setDensity, reset } = useUiPrefs()
+const { theme, accent, density, locale, setTheme, setAccent, setDensity, setLocale, reset } =
+  useUiPrefs()
+const copy = useChromeCopy()
 
 const themes: { id: UiTheme; label: string; copy: string }[] = [
   { id: 'mist', label: '薄雾', copy: '冷石板底，白天阅读' },
@@ -24,6 +28,11 @@ const accents: { id: UiAccent; label: string }[] = [
 const densities: { id: UiDensity; label: string; copy: string }[] = [
   { id: 'regular', label: '标准', copy: '标题和稿纸留出阅读空隙' },
   { id: 'compact', label: '紧凑', copy: '列表、步骤和正文收拢一档' },
+]
+
+const locales: { id: UiLocale; label: string; hint: 'localeZhHint' | 'localeEnHint' }[] = [
+  { id: 'zh', label: '中文', hint: 'localeZhHint' },
+  { id: 'en', label: 'English', hint: 'localeEnHint' },
 ]
 </script>
 
@@ -96,6 +105,26 @@ const densities: { id: UiDensity; label: string; copy: string }[] = [
               <span>
                 <span class="look-choice__label">{{ item.label }}</span>
                 <span class="look-choice__copy">{{ item.copy }}</span>
+              </span>
+            </button>
+          </div>
+        </section>
+
+        <section class="look-block" aria-labelledby="look-locale">
+          <h2 id="look-locale" class="look-block__title">{{ copy.localeTitle }}</h2>
+          <div class="look-grid">
+            <button
+              v-for="item in locales"
+              :key="item.id"
+              type="button"
+              class="look-choice"
+              :class="{ 'is-on': locale === item.id }"
+              :aria-pressed="locale === item.id"
+              @click="setLocale(item.id)"
+            >
+              <span>
+                <span class="look-choice__label">{{ item.label }}</span>
+                <span class="look-choice__copy">{{ copy[item.hint] }}</span>
               </span>
             </button>
           </div>

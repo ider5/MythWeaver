@@ -5,26 +5,31 @@ export const UI_STORAGE_KEY = 'mythweaver.ui'
 export const UI_THEMES = ['mist', 'ink'] as const
 export const UI_ACCENTS = ['teal', 'lagoon', 'pine', 'slate'] as const
 export const UI_DENSITIES = ['regular', 'compact'] as const
+export const UI_LOCALES = ['zh', 'en'] as const
 
 export type UiTheme = (typeof UI_THEMES)[number]
 export type UiAccent = (typeof UI_ACCENTS)[number]
 export type UiDensity = (typeof UI_DENSITIES)[number]
+export type UiLocale = (typeof UI_LOCALES)[number]
 
 export interface UiPrefs {
   theme: UiTheme
   accent: UiAccent
   density: UiDensity
+  locale: UiLocale
 }
 
 const DEFAULTS: UiPrefs = {
   theme: 'mist',
   accent: 'teal',
   density: 'regular',
+  locale: 'zh',
 }
 
 const theme = ref<UiTheme>(DEFAULTS.theme)
 const accent = ref<UiAccent>(DEFAULTS.accent)
 const density = ref<UiDensity>(DEFAULTS.density)
+const locale = ref<UiLocale>(DEFAULTS.locale)
 
 function allowed<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
   return typeof value === 'string' && (options as readonly string[]).includes(value)
@@ -42,6 +47,7 @@ export function readUiPrefs(): UiPrefs {
       theme: allowed(data.theme, UI_THEMES, DEFAULTS.theme),
       accent: allowed(data.accent, UI_ACCENTS, DEFAULTS.accent),
       density: allowed(data.density, UI_DENSITIES, DEFAULTS.density),
+      locale: allowed(data.locale, UI_LOCALES, DEFAULTS.locale),
     }
   } catch {
     return { ...DEFAULTS }
@@ -49,7 +55,12 @@ export function readUiPrefs(): UiPrefs {
 }
 
 function currentPrefs(): UiPrefs {
-  return { theme: theme.value, accent: accent.value, density: density.value }
+  return {
+    theme: theme.value,
+    accent: accent.value,
+    density: density.value,
+    locale: locale.value,
+  }
 }
 
 export function applyUiPrefs(prefs: UiPrefs) {
@@ -58,6 +69,7 @@ export function applyUiPrefs(prefs: UiPrefs) {
   root.dataset.theme = prefs.theme
   root.dataset.accent = prefs.accent
   root.dataset.density = prefs.density
+  root.lang = prefs.locale === 'en' ? 'en' : 'zh-CN'
 }
 
 function persist(prefs: UiPrefs) {
@@ -74,8 +86,9 @@ export function installUiPrefs() {
   theme.value = saved.theme
   accent.value = saved.accent
   density.value = saved.density
+  locale.value = saved.locale
   applyUiPrefs(saved)
-  watch([theme, accent, density], () => {
+  watch([theme, accent, density, locale], () => {
     const next = currentPrefs()
     applyUiPrefs(next)
     persist(next)
@@ -97,11 +110,16 @@ export function useUiPrefs() {
     density.value = next
   }
 
+  function setLocale(next: UiLocale) {
+    locale.value = next
+  }
+
   function reset() {
     theme.value = DEFAULTS.theme
     accent.value = DEFAULTS.accent
     density.value = DEFAULTS.density
+    locale.value = DEFAULTS.locale
   }
 
-  return { theme, accent, density, setTheme, setAccent, setDensity, reset }
+  return { theme, accent, density, locale, setTheme, setAccent, setDensity, setLocale, reset }
 }
