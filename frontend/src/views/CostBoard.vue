@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { costsApi } from '@/api'
+import { configApi, costsApi } from '@/api'
 
 const route = useRoute()
 const novelId = Number(route.params.id)
 const data = ref<any>(null)
+const routes = ref<
+  Array<{ stage: string; label: string; provider: string; model: string; purposes: string[] }>
+>([])
 
 function fmtUsd(n?: number, digits = 4) {
   if (n == null || Number.isNaN(Number(n))) return '—'
@@ -22,9 +25,28 @@ function fmtInt(n?: number) {
   return Number(n).toLocaleString('zh-CN')
 }
 
+const purposeRows = computed(() => {
+  const tokens = data.value?.by_purpose_tokens || {}
+  const costs = data.value?.by_purpose || {}
+  const keys = Array.from(new Set([...Object.keys(tokens), ...Object.keys(costs)])).sort()
+  return keys.map((k) => {
+    const row = tokens[k] || {}
+    return {
+      purpose: k,
+      input: row.input_tokens ?? 0,
+      output: row.output_tokens ?? 0,
+      cost: row.cost_usd ?? costs[k] ?? 0,
+    }
+  })
+})
+
 onMounted(async () => {
-  const res = await costsApi.summary(novelId)
-  data.value = res.data
+  const [costRes, cfgRes] = await Promise.all([
+    costsApi.summary(novelId),
+    configApi.get(),
+  ])
+  data.value = costRes.data
+  routes.value = cfgRes.data?.stage_routes || []
 })
 </script>
 
@@ -46,14 +68,52 @@ onMounted(async () => {
     </div>
 
     <div class="panel p-5">
-      <div class="font-medium mb-3">按用途</div>
-      <ul class="text-sm">
-        <li v-for="(v, k) in data?.by_purpose || {}" :key="k" class="purpose-row">
-          <span>{{ k }}</span>
-          <span class="tabular meta">{{ fmtMoney(Number(v)) }}</span>
-        </li>
-        <li v-if="data && !Object.keys(data.by_purpose || {}).length" class="empty">暂无记录</li>
-      </ul>
+      <div class="font-medium mb-1">阶段路由</div>
+      <p class="text-sm text-[var(--ink-muted)] mb-3">当前环境按阶段绑定的模型（来自服务端配置）。</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>模型</th>
+            <th>用途标签</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in routes" :key="r.stage" class="cv-item">
+            <td>{{ r.label }}</td>
+            <td class="tabular">{{ r.provider }} / {{ r.model }}</td>
+            <td class="meta">{{ (r.purposes || []).join(' · ') }}</td>
+          </tr>
+          <tr v-if="!routes.length">
+            <td colspan="3" class="empty">暂无路由</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel p-5">
+      <div class="font-medium mb-3">按用途（tokens + 成本）</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>用途</th>
+            <th>in</th>
+            <th>out</th>
+            <th>成本</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in purposeRows" :key="row.purpose" class="cv-item">
+            <td>{{ row.purpose }}</td>
+            <td class="tabular">{{ fmtInt(row.input) }}</td>
+            <td class="tabular">{{ fmtInt(row.output) }}</td>
+            <td class="tabular">{{ fmtMoney(Number(row.cost)) }}</td>
+          </tr>
+          <tr v-if="data && !purposeRows.length">
+            <td colspan="4" class="empty">暂无记录</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="panel overflow-hidden">

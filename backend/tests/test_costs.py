@@ -72,4 +72,19 @@ async def test_cost_totals_include_more_than_200_rows(client):
     assert body["total_cost_usd"] == pytest.approx(201.0)
     assert body["total_input_tokens"] == 2010
     assert body["by_purpose"]["embed"] == pytest.approx(201.0)
+    assert body["by_purpose_tokens"]["embed"]["input_tokens"] == 2010
+    assert body["by_purpose_tokens"]["embed"]["output_tokens"] == 0
+    assert body["by_purpose_tokens"]["embed"]["cost_usd"] == pytest.approx(201.0)
     assert len(body["recent"]) <= 30
+
+
+@pytest.mark.asyncio
+async def test_config_exposes_stage_routes(client):
+    r = await client.get("/api/config")
+    assert r.status_code == 200
+    body = r.json()
+    stages = {row["stage"] for row in body["stage_routes"]}
+    assert {"summary", "generation", "critic", "embedding"} <= stages
+    generation = next(row for row in body["stage_routes"] if row["stage"] == "generation")
+    assert generation["model"]
+    assert "generation" in generation["purposes"]
