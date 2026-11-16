@@ -38,7 +38,7 @@ function errorText(err: unknown) {
   const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
   const detail = e.response?.data?.detail
   if (typeof detail === 'string') return detail
-  return e.message || '写后回写失败'
+  return e.message || '设定对照失败'
 }
 
 function adopt(rows: BibleProposal[]) {
@@ -169,16 +169,16 @@ onMounted(() => {
     v-if="visible"
     class="panel writeback"
     :class="{ 'writeback--gap': mode === 'pending' }"
-    aria-label="写后回写"
+    aria-label="设定变更"
   >
     <header class="writeback-head">
       <div>
-        <h3>{{ mode === 'pending' ? '待确认的写后变更' : '写后回写' }}</h3>
+        <h3>{{ mode === 'pending' ? '设定还没写入' : '本章设定变更' }}</h3>
         <p>
           {{
             mode === 'pending'
-              ? '这些变更来自已生成的章节，还没有写入设定。'
-              : '本章相对 Story Bible 的变更先列在这里。勾选确认后才写入，未勾选的会跳过。'
+              ? '这些改动来自已经生成的章节，还没写进设定。'
+              : '先对照现有 Story Bible。勾上的才写入，没勾的跳过。'
           }}
         </p>
       </div>
@@ -187,7 +187,7 @@ onMounted(() => {
       </RouterLink>
     </header>
 
-    <p v-if="loading" class="meta">正在对照本章与 Story Bible…</p>
+    <p v-if="loading" class="meta">正在对照这一章和 Story Bible…</p>
     <p v-if="error" class="alert alert--danger">
       {{ error }}
       <button v-if="mode === 'chapter'" type="button" class="btn-ghost btn-sm" :disabled="busy" @click="propose">
@@ -199,7 +199,7 @@ onMounted(() => {
       <p v-if="row.chapter_index" class="meta">
         第{{ row.chapter_index }}章<span v-if="row.chapter_title"> · {{ row.chapter_title }}</span>
       </p>
-      <p v-if="!row.changes.length" class="empty">本章没有要回写的人物、设定或伏笔。</p>
+      <p v-if="!row.changes.length" class="empty">这一章没有新的人物、设定或伏笔。</p>
       <ul v-else class="writeback-list">
         <li v-for="change in row.changes" :key="change.id">
           <label class="writeback-check">
@@ -233,7 +233,7 @@ onMounted(() => {
             :disabled="busy || !selectedCount(row.id)"
             @click="apply(row, false)"
           >
-            写入勾选（{{ selectedCount(row.id) }}）
+            写入已勾选（{{ selectedCount(row.id) }}）
           </button>
           <button type="button" class="btn-ghost btn-sm" :disabled="busy" @click="apply(row, true)">
             全部写入

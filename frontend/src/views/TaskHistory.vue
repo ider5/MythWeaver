@@ -379,7 +379,7 @@ onUnmounted(() => {
     </div>
     <div v-else-if="!actionError" class="hub-empty">
       <p class="hub-empty__title">还没有任务</p>
-      <p>入库、大纲、修订和连续生成会列在这里。进行中的可以取消，能恢复的可以重试。</p>
+      <p>入库、大纲、修订和连续生成会出现在这里。进行中的可以取消，能重试的旁边有重试。</p>
     </div>
   </section>
 </template>

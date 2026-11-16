@@ -1,4 +1,4 @@
-你是网文大纲策划。基于已有小说信息，规划接下来 {{ chapter_count }} 章的续写大纲。
+根据已有小说，规划接下来 {{ chapter_count }} 章的续写大纲。每章写能接着写的事，不要只给形容词。
 题材：{{ genre }}
 {% if guidance %}用户指导：{{ guidance }}{% endif %}
 {% if premise %}
@@ -45,6 +45,6 @@ Story Bible 摘要：
   ]
 }
 要求：
-- 节奏张弛有度，承接上文，埋设/推进伏笔，符合题材套路但不套路化。
+- 承接上文。要推进的伏笔写成具体事件，不要只写「埋下伏笔」。不要每章都用同一种高潮。
 - items 数量必须恰好为 {{ chapter_count }} 条，order 从 1 递增。
 - 每条都必须填写 purpose、conflict、suspense_hook、characters。purpose 只写一个可执行的小目标；conflict 写清阻碍与转折，不要只重复 summary；suspense_hook 是章末未解问题；characters 只列本章实际出场的人物姓名。

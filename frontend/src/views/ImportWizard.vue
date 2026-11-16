@@ -71,9 +71,9 @@ async function confirm() {
 <template>
   <div class="wizard max-w-3xl">
     <p class="kicker mb-2">MythWeaver</p>
-    <h1 class="page-title mb-1">把一本书接进来</h1>
+    <h1 class="page-title mb-1">导入小说</h1>
     <p class="page-desc">
-      先选用途。原稿进入续写；参考只拆文风，不会变成正文。没有原稿？
+      先选用途。原稿可以接着写；参考只拆文风，不会变成正文。没有原稿？
       <RouterLink to="/create">从零开书</RouterLink>
     </p>
 

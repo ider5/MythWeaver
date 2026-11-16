@@ -115,6 +115,7 @@ onMounted(load)
           <span class="path-card__title">把已有原文接下去</span>
           <span class="path-card__copy">导入、入库、大纲，再流式续写。</span>
         </button>
+        </button>
       </div>
       <p v-if="manuscriptNovels.length" class="home-resume">
         <button class="btn-ghost btn-sm" type="button" @click="openNovel(manuscriptNovels[0])">

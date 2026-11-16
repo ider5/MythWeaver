@@ -68,8 +68,8 @@ onMounted(async () => {
     </div>
 
     <div class="panel p-5">
-      <div class="font-medium mb-1">阶段路由</div>
-      <p class="text-sm text-[var(--ink-muted)] mb-3">当前环境按阶段绑定的模型（来自服务端配置）。</p>
+      <div class="font-medium mb-1">各阶段用的模型</div>
+      <p class="text-sm text-[var(--ink-muted)] mb-3">服务端按阶段绑的模型，来自配置。</p>
       <table class="data-table">
         <thead>
           <tr>
@@ -85,7 +85,7 @@ onMounted(async () => {
             <td class="meta">{{ (r.purposes || []).join(' · ') }}</td>
           </tr>
           <tr v-if="!routes.length">
-            <td colspan="3" class="empty">暂无路由</td>
+            <td colspan="3" class="empty">还没有模型配置</td>
           </tr>
         </tbody>
       </table>
@@ -110,7 +110,7 @@ onMounted(async () => {
             <td class="tabular">{{ fmtMoney(Number(row.cost)) }}</td>
           </tr>
           <tr v-if="data && !purposeRows.length">
-            <td colspan="4" class="empty">暂无记录</td>
+            <td colspan="4" class="empty">还没有记录</td>
           </tr>
         </tbody>
       </table>
@@ -135,7 +135,7 @@ onMounted(async () => {
             <td class="tabular">{{ fmtMoney(Number(r.cost_usd), 5) }}</td>
           </tr>
           <tr v-if="data && !(data.recent || []).length">
-            <td colspan="4" class="empty">暂无调用记录</td>
+            <td colspan="4" class="empty">还没有调用记录</td>
           </tr>
         </tbody>
       </table>

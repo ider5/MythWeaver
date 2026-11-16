@@ -75,7 +75,7 @@ def find_chapter_meta_refs(content: str) -> list[dict[str, str]]:
         {
             "type": "chapter_meta",
             "severity": "error",
-            "message": "正文出现章号/章节元指称，破坏沉浸感",
+            "message": "正文里出现了章号，像在提目录",
             "detail": "命中：" + "、".join(uniq[:12]),
         }
     ]
@@ -151,7 +151,7 @@ def find_ai_voice_cliches(content: str) -> list[dict[str, str]]:
         {
             "type": "ai_voice",
             "severity": "warning",
-            "message": "正文出现高置信 AI 套话或作者空转，削弱网文阅读感",
+            "message": "正文里有套话或作者总结，读起来像解说",
             "detail": "命中：" + "、".join(uniq[:12]),
         }
     ]

@@ -210,6 +210,10 @@ make dist                     # ./scripts/package.sh dist
 
 前端「LLM 设置」（`/settings/providers`）提供 OpenAI、DeepSeek、Moonshot、通义、智谱、OpenRouter、Ollama 与自定义预设。选择预设会填入默认 Base URL 与模型。「测试连接」调用 `POST /api/providers/test`，密钥只用于本次探测、不落库。测通后把相同值写入 `backend/.env`。
 
+### 厂商预设与连接测试
+
+前端「LLM 设置」页（`/settings/providers`）列出常见 OpenAI 兼容厂商。选中后填入默认 Base URL 和模型；「测试连接」调用 `POST /api/providers/test`，密钥只用于这次探测，不写入数据库。测通后把相同值写进 `backend/.env`。
+
 ### 测试
 
 ```bash

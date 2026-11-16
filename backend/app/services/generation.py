@@ -236,7 +236,7 @@ async def stream_generate_chapter(
         segmented = len(segments) > 1
         next_index = await _resolve_generation_index(session, novel, item)
 
-        yield {"event": "status", "message": "组装上下文…"}
+        yield {"event": "status", "message": "正在准备前文…"}
         ctx = await build_context(
             session, novel, item, upto_chapter_index=max(0, next_index - 1)
         )
@@ -252,7 +252,7 @@ async def stream_generate_chapter(
         else:
             yield {
                 "event": "status",
-                "message": f"本章目标约 {resolved_target} 字，开始流式生成…",
+                "message": f"本章目标约 {resolved_target} 字，开始写…",
                 "context_tokens": ctx.total_tokens,
                 "target_chars": resolved_target,
             }
@@ -316,7 +316,7 @@ async def stream_generate_chapter(
             seg_text = ""
             async for chunk in client.stream(
                 [
-                    {"role": "system", "content": "你是专业网文作者，只输出章节正文。先写可感知场面，禁止套话、作者总结与说明文对白。"},
+                    {"role": "system", "content": "只输出章节正文。先写能看见的场面。不要套话，不要作者总结，不要用对话讲解设定。"},
                     {"role": "user", "content": prompt},
                 ],
                 endpoint=client.generation_endpoint(),
@@ -369,10 +369,10 @@ async def stream_generate_chapter(
             if segmented:
                 yield {
                     "event": "status",
-                    "message": "长章仅做一致性审查，跳过整章重写…",
+                    "message": "这一章较长，只检查，不整章重写…",
                 }
             else:
-                yield {"event": "status", "message": "一致性校验与 Critic…"}
+                yield {"event": "status", "message": "正在检查设定和前后文…"}
             revised, report, initial = await run_critic_loop(
                 session,
                 novel,

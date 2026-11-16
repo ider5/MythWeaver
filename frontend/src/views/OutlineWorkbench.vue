@@ -393,7 +393,7 @@ onUnmounted(() => closeGenerateEs())
           </li>
         </ol>
         <div v-else class="empty-state">
-          <p class="empty">尚未生成大纲。填好章数后生成第一份蓝图。</p>
+          <p class="empty">还没有大纲。填好上面的章数，再生成。</p>
         </div>
         </div>
       </section>

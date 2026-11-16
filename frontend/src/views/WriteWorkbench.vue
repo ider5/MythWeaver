@@ -294,7 +294,7 @@ async function previewSelectedRevise() {
     })
     previewBase.value = data.base_content
     previewRevised.value = data.revised_content
-    if (!data.changed) previewError.value = '模型未改动正文（可能已跳过长章整章重写）'
+    if (!data.changed) previewError.value = '正文没有改。这一章可能太长，没有整章重写。'
   } catch (e: any) {
     previewError.value = apiErrorDetail(e, '预览修稿失败')
   } finally {
@@ -321,12 +321,12 @@ async function confirmSelectedRevise() {
     if (data.consistency) consistency.value = data.consistency
     syncIssueSelection(consistency.value?.issues)
     clearPreview()
-    status.value = '已确认修稿（未入库）；可再点「保存修订并入库」'
+    status.value = '修改已写入这一版，还没入库。要入库再点「保存修订并入库」。'
     const { data: vers } = await novelsApi.versions(novelId, chapterId.value)
     applyLatestVersion(vers)
     if (data.revised_content) content.value = data.revised_content
   } catch (e: any) {
-    previewError.value = apiErrorDetail(e, '确认修稿失败')
+    previewError.value = apiErrorDetail(e, '写入修改失败')
   } finally {
     confirmBusy.value = false
   }
@@ -475,7 +475,7 @@ async function startGenerate() {
       const raw = data.message || '生成失败'
       const friendly =
         /UNIQUE constraint failed:\s*chapters\.novel_id,\s*chapters\.index/i.test(raw)
-          ? '该章节已存在。请刷新后重试生成（系统会覆盖已有草稿）。'
+          ? '这一章已经有正文。刷新后再生成，会盖掉现有草稿。'
           : raw
       stopStream(friendly)
       return
@@ -766,7 +766,7 @@ onUnmounted(() => {
     <section class="wb-stage">
       <ol class="wb-steps" aria-label="续写流程">
         <li :class="{ 'is-current': writePhase === 0, 'is-done': writePhase > 0 }">选章</li>
-        <li :class="{ 'is-current': writePhase === 1, 'is-done': writePhase > 1 }">成稿</li>
+        <li :class="{ 'is-current': writePhase === 1, 'is-done': writePhase > 1 }">生成</li>
         <li :class="{ 'is-current': writePhase === 2, 'is-done': writePhase > 2 }">审阅</li>
         <li :class="{ 'is-current': writePhase === 3 && !committed, 'is-done': committed }">入库</li>
       </ol>
@@ -790,7 +790,7 @@ onUnmounted(() => {
 
       <div class="wb-actions">
         <button class="btn" type="button" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
-          {{ streaming ? '生成中…' : error ? '重试生成' : '流式生成' }}
+          {{ streaming ? '生成中…' : error ? '重试生成' : '生成本章' }}
         </button>
         <button
           class="btn-ghost"
@@ -929,7 +929,7 @@ onUnmounted(() => {
               {{ versionLabel(v.version_type) }}
             </button>
           </div>
-          <span class="meta tabular">{{ displayChars ? `${displayChars} 字` : '空白稿纸' }}</span>
+          <span class="meta tabular">{{ displayChars ? `${displayChars} 字` : '还是空的' }}</span>
         </div>
         <div :key="selected?.id ?? 0" class="wb-manuscript__body">
           <div
@@ -943,7 +943,7 @@ onUnmounted(() => {
             v-show="!streaming"
             v-model="content"
             class="prose-edit"
-            placeholder="生成内容将在此出现，可直接修订…"
+            placeholder="生成的正文会出现在这里，可以直接改。"
             :disabled="reviseBusy"
           />
         </div>
@@ -1012,7 +1012,7 @@ onUnmounted(() => {
           </div>
           <div class="wb-diff__actions">
             <button type="button" class="btn" :disabled="reviseBusy" @click="confirmSelectedRevise">
-              {{ confirmBusy ? '写入中…' : '确认采用修稿' }}
+              {{ confirmBusy ? '写入中…' : '写入这版修改' }}
             </button>
             <button type="button" class="btn-ghost" :disabled="reviseBusy" @click="clearPreview">放弃预览</button>
           </div>
@@ -1022,8 +1022,8 @@ onUnmounted(() => {
         <div class="wb-critic__head">
           <h3>审阅</h3>
         </div>
-        <p class="empty">该版本无一致性报告</p>
-        <p class="meta">生成时关闭了检验，或报告在后续 Critic 修订版上。</p>
+        <p class="empty">这一版没有检查报告</p>
+        <p class="meta">生成时关了检查，或者报告在后面的修订版上。</p>
       </section>
     </section>
   </div>
