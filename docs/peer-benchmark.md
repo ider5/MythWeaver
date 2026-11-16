@@ -1,7 +1,7 @@
 # MythWeaver 同行对标报告
 
 更新时间：2026-11-17（Asia/Shanghai）  
-证据锚点：`origin/master` `ba83b0c`（含已合并 PR #3–#29）  
+证据锚点：`origin/master` `9a285c8`（含已合并 PR #3–#30）  
 基准产品：MythWeaver（`ider5/MythWeaver`）— 单机 FastAPI + Vue 3 网络小说续写  
 材料：仓库 README / `docs/` / 当前代码与测试。同行格沿用 [#19](https://github.com/ider5/MythWeaver/pull/19) 与 2026-11-16 笔记，本轮没有重爬对方仓库。
 
@@ -48,7 +48,7 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 | Critic / 审校 | ● LangGraph ≤2 轮（#7）+ 勾选修稿（#8） | ● | ● | ● |
 | 拆书 / 仿写 | ● 原稿 / 参考（#10） | ● | ● | ◐ |
 | 导入引导 / 空状态 | ●（#17） | ● | ● | ◐ |
-| 写作 / 大纲台流程 | ● 大纲三步、续写四步（#18） | ● | ● | ◐ |
+| 写作 / 大纲台流程 | ● 大纲三步、续写四步（#18）；两个以上版本可按行对照（#30） | ● | ● | ◐ |
 | 任务可视 / 取消 | ● 状态、进度、取消 / 重试（#11 #20）；同书同类型进行中再入队 409（#27） | ● | ● | ◐ |
 | 自动导演 / 批量 | ● ≤10 章半自动（#13） | ◐ | ● | ◐ |
 | 用量与阶段路由 | ●（#14） | ◐ | ● | ○ |
@@ -82,6 +82,7 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 | 导航保持与任务去重 | 顶栏 KeepAlive（最多 12，键为路径前三段，同一本书共用工作区壳）。分区内再 KeepAlive（最多 8）。Pinia 记住大纲选中、筛选、任务筛选和导入草稿。同书同类型已有 pending/running 时再入队返回 409 | 刷新后 Pinia 草稿丢失。外观偏好除外，那个在 localStorage | [#27](https://github.com/ider5/MythWeaver/pull/27) `test_duplicate_ingest_rejected` |
 | 文案与提示词 | 界面短句说明这一屏做什么。`anti_ai.j2` 改成先写场面、少讲解、少套句。禁写词表还在 | 规则仍写死在模板里，不是资产库 | [#28](https://github.com/ider5/MythWeaver/pull/28) `anti_ai.j2` |
 | 导出 EPUB | 工作台可下 TXT、MD、EPUB。EPUB 2 自打包（zip + xhtml + ncx），无第三方库。章按序号 | 参考本仍 409。首页「导出」仍是 TXT。测试只检查 zip 结构，没有用阅读器打开 | [#29](https://github.com/ider5/MythWeaver/pull/29) `backend/tests/test_export.py` |
+| 章节版本对照 | 续写台至少两个版本时出现「对照」。左右各选一个版本，按行标出增删 | 只在浏览器里做，按整行比较。没有新接口，这个 PR 也没有测试 | [#30](https://github.com/ider5/MythWeaver/pull/30) `WriteWorkbench.vue` |
 
 ## 4. MythWeaver 相对优势
 
@@ -92,9 +93,9 @@ MythWeaver 的差异仍在长文入库压缩（分层摘要 + sqlite-vec）、St
 
 匿名端点和本机外观是可用性，不计入相对 Pagekin / Biz 的优势。Pagekin 已有 Ollama 与 BYOK。
 
-## 5. 已关闭差距（#3–#29）
+## 5. 已关闭差距（#3–#30）
 
-CI、Docker / 打包、模型预设、蓝图字段、LangGraph Critic、修稿勾选、首页与工作区视觉、参考导入、任务取消 / 重试与任务中心、Bible 可视化与编辑、批量导演、阶段路由 / 用量、导入向导与空状态、写作 / 大纲台、生成章回写确认、匿名兼容端点、中英 README、从零开书分流、本机外观、工作区 KeepAlive 与任务去重、提示词与界面句子收紧、原稿 EPUB 导出。
+CI、Docker / 打包、模型预设、蓝图字段、LangGraph Critic、修稿勾选、首页与工作区视觉、参考导入、任务取消 / 重试与任务中心、Bible 可视化与编辑、批量导演、阶段路由 / 用量、导入向导与空状态、写作 / 大纲台、生成章回写确认、匿名兼容端点、中英 README、从零开书分流、本机外观、工作区 KeepAlive 与任务去重、提示词与界面句子收紧、原稿 EPUB 导出、续写台章节版本按行对照。
 
 ## 6. 仍敞开
 

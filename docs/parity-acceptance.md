@@ -2,7 +2,7 @@
 
 对照 [peer-benchmark.md](./peer-benchmark.md)。  
 更新：2026-11-17（Asia/Shanghai）  
-证据锚点：`origin/master` `ba83b0c`
+证据锚点：`origin/master` `9a285c8`
 
 ## 选定基准
 
@@ -27,7 +27,7 @@
 
 ## Round 2 已合并（#16–#28）
 
-[#19](https://github.com/ider5/MythWeaver/pull/19) 收到 #18。下表从那之后补到 `ba83b0c`。
+[#19](https://github.com/ider5/MythWeaver/pull/19) 收到 #18。下表从那之后补到 `9a285c8`。
 
 | 项 | 现状 | 证据 |
 |----|------|------|
@@ -44,6 +44,7 @@
 | 导航保持与任务去重 | ● 会话内 KeepAlive + Pinia 草稿。同书同类型进行中任务 409。刷新不保留草稿 | [#27](https://github.com/ider5/MythWeaver/pull/27) `backend/tests/test_task_cancel.py` |
 | 文案与提示词 | ● 界面和 `anti_ai.j2` 改成短约束。不是可编辑资产库 | [#28](https://github.com/ider5/MythWeaver/pull/28) |
 | 原稿 EPUB | ● 工作台 TXT / MD / EPUB。EPUB 2，无第三方库。参考本 409。首页按钮仍只出 TXT | [#29](https://github.com/ider5/MythWeaver/pull/29) `backend/tests/test_export.py` |
+| 章节版本对照 | ● 至少两个版本时可按行对照。只在前端，无新接口、无测试 | [#30](https://github.com/ider5/MythWeaver/pull/30) `frontend/src/views/WriteWorkbench.vue` |
 
 更细的边界写在 [peer-benchmark.md](./peer-benchmark.md) §3.1。
 
