@@ -215,6 +215,10 @@ onMounted(() => {
             </span>
           </label>
           <p class="writeback-summary">{{ change.summary }}</p>
+          <blockquote v-if="change.quote" class="writeback-quote">
+            <span class="k">出处</span>
+            「{{ change.quote }}」
+          </blockquote>
           <div v-if="fieldText(change).length" class="writeback-fields">
             <div v-for="field in change.fields" :key="field.key" class="writeback-field">
               <span class="k">{{ field.label }}</span>
@@ -310,6 +314,23 @@ onMounted(() => {
   margin: 0.2rem 0 0 1.45rem;
   color: var(--ink-muted);
   font-size: 0.8125rem;
+}
+.writeback-quote {
+  margin: 0.4rem 0 0 1.45rem;
+  padding: 0.15rem 0 0.15rem 0.7rem;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+  font-family: var(--font-prose);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+.writeback-quote .k {
+  display: block;
+  margin-bottom: 0.1rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-muted);
 }
 .writeback-fields {
   margin: 0.35rem 0 0 1.45rem;

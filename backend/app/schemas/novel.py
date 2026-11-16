@@ -140,6 +140,20 @@ class CriticIssueIn(BaseModel):
     detail: Optional[str] = None
 
 
+class ParagraphDecisionIn(BaseModel):
+    """某一段采用修订，或保留原文。"""
+
+    id: str = Field(..., min_length=1)
+    accept: bool = True
+
+
+class ParagraphHunkOut(BaseModel):
+    id: str
+    op: str
+    before: str = ""
+    after: str = ""
+
+
 class CriticSelectReviseIn(BaseModel):
     """按勾选问题预览修稿：不写版本、不入库。"""
 
@@ -150,6 +164,14 @@ class CriticSelectReviseIn(BaseModel):
         description="false=仅预览；true=写入 user_edited 版本（仍不自动入库，除非 commit_to_knowledge）",
     )
     commit_to_knowledge: bool = False
+    revised_content: Optional[str] = Field(
+        default=None,
+        description="预览得到的修订稿。按段写入时必填，服务端不再重跑修稿。",
+    )
+    hunk_decisions: Optional[list[ParagraphDecisionIn]] = Field(
+        default=None,
+        description="按段采用。省略则整章重跑并写入；给出时 accept=false 的段保留原文。",
+    )
 
 
 class CriticSelectReviseOut(BaseModel):
@@ -159,6 +181,7 @@ class CriticSelectReviseOut(BaseModel):
     changed: bool
     version_id: Optional[int] = None
     task_id: Optional[int] = None
+    hunks: list[ParagraphHunkOut] = Field(default_factory=list)
 
 
 class CommitKnowledgeOut(BaseModel):

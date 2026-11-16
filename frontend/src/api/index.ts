@@ -128,8 +128,16 @@ export interface WritebackChange {
   target_id?: number | null
   label: string
   summary: string
+  quote?: string | null
   fields: WritebackField[]
   after?: Record<string, unknown>
+}
+
+export interface ParagraphHunk {
+  id: string
+  op: string
+  before: string
+  after: string
 }
 
 export interface BibleProposal {
@@ -313,6 +321,8 @@ export const novelsApi = {
       issues: Array<{ type: string; severity?: string; message: string; detail?: string | null }>
       confirm?: boolean
       commit_to_knowledge?: boolean
+      revised_content?: string
+      hunk_decisions?: Array<{ id: string; accept: boolean }>
     },
   ) =>
     api.post<{
@@ -322,6 +332,7 @@ export const novelsApi = {
       changed: boolean
       version_id?: number | null
       task_id?: number | null
+      hunks?: ParagraphHunk[]
     }>(`/novels/${nid}/chapters/${cid}/critic-select-revise`, body),
   /** 仅重新入队知识库增量更新，不新建 user_edited 版本（用于入库失败重试） */
   commitKnowledge: (nid: number, cid: number) =>

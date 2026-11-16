@@ -11,7 +11,7 @@ from app.db import close_db, init_db
 from app.main import create_app
 from app.models import Chapter, Novel
 from app.services.ingestion import _extract_chapter, incremental_update_chapter
-from app.services.writeback import build_writeback_changes
+from app.services.writeback import build_writeback_changes, source_quote
 import app.db as db_mod
 
 
@@ -46,6 +46,72 @@ def test_build_writeback_skips_noop_and_appearance_only():
         "plot_threads": [{"title": "玉佩之谜", "description": "发热", "thread_type": "伏笔", "status": "未回收"}],
     }
     assert build_writeback_changes(characters, worlds, threads, same, chapter_index=4) == []
+
+
+def test_source_quote_copies_a_real_sentence_and_drops_invented_ones():
+    chapter = "叶凡踏入青阳城。城门在日落时关闭。玉佩忽然发热。"
+    assert source_quote(chapter, "叶凡当场筑基，灵气冲天。", ["筑基"]) is None
+    assert source_quote(chapter, "城门在 日落时关闭", []) == "城门在日落时关闭。"
+    assert source_quote(chapter, None, ["青阳城"]) == "叶凡踏入青阳城。"
+
+    changes = build_writeback_changes(
+        [
+            {
+                "id": 7,
+                "name": "叶凡",
+                "aliases": [],
+                "role": "主角",
+                "status": "凡人",
+                "personality": None,
+                "speech_style": None,
+                "last_appear_chapter": 1,
+            }
+        ],
+        [],
+        [],
+        {
+            "characters": [
+                {
+                    "name": "叶凡",
+                    "status": "筑基",
+                    "evidence": "叶凡当场筑基，灵气冲天。",
+                }
+            ],
+            "world_settings": [
+                {
+                    "title": "城门",
+                    "category": "规则",
+                    "content": "日落关闭",
+                    "evidence": "日落时关闭",
+                }
+            ],
+            "plot_threads": [
+                {
+                    "title": "玉佩之谜",
+                    "description": "玉佩认主",
+                    "thread_type": "伏笔",
+                    "status": "未回收",
+                    "evidence": "玉佩认主了。",
+                }
+            ],
+        },
+        chapter_index=2,
+        chapter_text=chapter,
+    )
+    by_kind = {item["kind"]: item for item in changes}
+    assert "quote" not in by_kind["character"]
+    assert by_kind["world"]["quote"] == "城门在日落时关闭。"
+    assert by_kind["world"]["quote"] in chapter
+    assert "玉佩认主了" not in by_kind["thread"].get("quote", "")
+    assert "quote" not in by_kind["thread"]
+
+    long_fact = "玉佩认主"
+    long_chapter = ("甲" * 200) + long_fact + "。随后离开。"
+    window = source_quote(long_chapter, None, [long_fact])
+    assert window is not None
+    assert long_fact in window
+    assert window in long_chapter
+    assert len(window) <= 180
 
 
 def test_build_writeback_updates_alias_match_and_resolves_thread():
@@ -191,6 +257,10 @@ async def test_propose_apply_subset_then_reuse_hash(client, monkeypatch):
     assert kinds["character"]["op"] == "update"
     assert kinds["world"]["op"] == "create"
     assert kinds["thread"]["after"]["resolved_chapter"] == 4
+    assert kinds["world"]["quote"] == "叶凡踏入青阳城。"
+    assert kinds["world"]["quote"] in "叶凡踏入青阳城。"
+    assert not kinds["character"].get("quote")
+    assert not kinds["thread"].get("quote")
 
     again = await client.post(
         f"/api/novels/{novel_id}/bible/proposals",

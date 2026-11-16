@@ -9,6 +9,7 @@ import {
   type OpenThread,
   type Outline,
   type OutlineItem,
+  type ParagraphHunk,
   type QualityHint,
 } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
@@ -58,6 +59,8 @@ const reviseFailed = ref(false)
 const selectedIssueKeys = ref<Set<string>>(new Set())
 const previewBase = ref('')
 const previewRevised = ref('')
+const previewHunks = ref<ParagraphHunk[]>([])
+const hunkChoices = ref<Record<string, boolean>>({})
 const previewBusy = ref(false)
 const confirmBusy = ref(false)
 const previewError = ref('')
@@ -102,6 +105,16 @@ const showNoReportHint = computed(
 )
 
 const reviseBusy = computed(() => revising.value || previewBusy.value || confirmBusy.value)
+const adoptedHunkCount = computed(
+  () => previewHunks.value.filter((hunk) => hunkChoices.value[hunk.id] !== false).length,
+)
+const confirmLabel = computed(() => {
+  if (confirmBusy.value) return '写入中…'
+  if (!previewHunks.value.length || adoptedHunkCount.value === previewHunks.value.length) {
+    return '写入这版修改'
+  }
+  return `写入采用的段落（${adoptedHunkCount.value}）`
+})
 
 const issueRows = computed(() => {
   const issues = consistency.value?.issues || []
@@ -196,6 +209,36 @@ function clearPreview() {
   previewBase.value = ''
   previewRevised.value = ''
   previewError.value = ''
+  previewHunks.value = []
+  hunkChoices.value = {}
+}
+
+function hunkOn(id: string) {
+  return hunkChoices.value[id] !== false
+}
+
+function setHunk(id: string, accept: boolean) {
+  hunkChoices.value = { ...hunkChoices.value, [id]: accept }
+}
+
+function setAllHunks(accept: boolean) {
+  const next: Record<string, boolean> = {}
+  for (const hunk of previewHunks.value) next[hunk.id] = accept
+  hunkChoices.value = next
+}
+
+function hunkOpLabel(op: string) {
+  if (op === 'insert') return '新增'
+  if (op === 'delete') return '删去'
+  return '改写'
+}
+
+function adoptHunks(hunks: ParagraphHunk[] | undefined) {
+  const rows = Array.isArray(hunks) ? hunks : []
+  previewHunks.value = rows
+  const choices: Record<string, boolean> = {}
+  for (const hunk of rows) choices[hunk.id] = true
+  hunkChoices.value = choices
 }
 
 const originalAvgChars = computed(() => {
@@ -565,6 +608,7 @@ async function previewSelectedRevise() {
     })
     previewBase.value = data.base_content
     previewRevised.value = data.revised_content
+    adoptHunks(data.hunks)
     if (!data.changed) previewError.value = '正文没有改。这一章可能太长，没有整章重写。'
   } catch (e: any) {
     previewError.value = apiErrorDetail(e, '预览修稿失败')
@@ -579,6 +623,14 @@ async function confirmSelectedRevise() {
     .filter((r: { key: string }) => selectedIssueKeys.value.has(r.key))
     .map((r: { iss: any }) => r.iss)
   if (!issues.length) return
+  const decisions = previewHunks.value.map((hunk) => ({
+    id: hunk.id,
+    accept: hunkChoices.value[hunk.id] !== false,
+  }))
+  if (previewHunks.value.length && decisions.every((item) => !item.accept)) {
+    previewError.value = '全部保留原文，正文不会变。'
+    return
+  }
   confirmBusy.value = true
   previewError.value = ''
   try {
@@ -587,9 +639,15 @@ async function confirmSelectedRevise() {
       issues,
       confirm: true,
       commit_to_knowledge: false,
+      revised_content: previewRevised.value,
+      hunk_decisions: decisions,
     })
     content.value = data.revised_content
     if (data.consistency) consistency.value = data.consistency
+    if (!data.changed) {
+      previewError.value = '正文没有改。'
+      return
+    }
     syncIssueSelection(consistency.value?.issues)
     clearPreview()
     status.value = '修改已写入这一版，还没入库。要入库再点「保存修订并入库」。'
@@ -1265,7 +1323,7 @@ onUnmounted(() => {
           <span class="badge" :class="consistency.ok ? 'badge--ok' : 'badge--danger'">
             {{ consistency.ok ? '通过' : '有问题' }}
           </span>
-          <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮 · 勾选后预览，确认才写入</span>
+          <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮 · 勾选后预览，按段采用才写入</span>
         </div>
         <div v-if="issueRows.length" class="wb-critic__tools">
           <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="selectAllIssues">
@@ -1303,18 +1361,86 @@ onUnmounted(() => {
           <li v-if="!issueRows.length" class="empty">无问题</li>
         </ul>
         <p v-if="previewError" class="alert alert--danger">{{ previewError }}</p>
-        <div v-if="previewRevised" class="wb-diff">
-          <div>
-            <div class="wb-diff__label">修稿前</div>
-            <pre class="wb-diff__text">{{ previewBase }}</pre>
+        <div v-if="previewRevised" class="wb-revise">
+          <div v-if="previewHunks.length" class="wb-hunks" aria-label="按段采用">
+            <div class="wb-hunks__bar">
+              <p class="meta">没改的段落不列在这里。采用的写入，保留原文的不动。</p>
+              <div class="wb-hunks__bulk">
+                <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="setAllHunks(true)">
+                  全部采用
+                </button>
+                <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="setAllHunks(false)">
+                  全部保留原文
+                </button>
+              </div>
+            </div>
+            <article
+              v-for="hunk in previewHunks"
+              :key="hunk.id"
+              class="wb-hunk"
+              :class="{ 'is-kept': !hunkOn(hunk.id) }"
+            >
+              <header class="wb-hunk__head">
+                <span class="meta">{{ hunkOpLabel(hunk.op) }}</span>
+                <span class="wb-hunk__state">{{ hunkOn(hunk.id) ? '采用' : '保留原文' }}</span>
+              </header>
+              <p v-if="hunk.before" class="wb-hunk__text wb-hunk__before">{{ hunk.before }}</p>
+              <p v-if="hunk.after" class="wb-hunk__text wb-hunk__after">{{ hunk.after }}</p>
+              <div class="wb-hunk__actions">
+                <button
+                  type="button"
+                  class="btn-ghost btn-sm"
+                  :class="{ 'is-on': hunkOn(hunk.id) }"
+                  :aria-pressed="hunkOn(hunk.id)"
+                  :disabled="reviseBusy"
+                  @click="setHunk(hunk.id, true)"
+                >
+                  采用
+                </button>
+                <button
+                  type="button"
+                  class="btn-ghost btn-sm"
+                  :class="{ 'is-on': !hunkOn(hunk.id) }"
+                  :aria-pressed="!hunkOn(hunk.id)"
+                  :disabled="reviseBusy"
+                  @click="setHunk(hunk.id, false)"
+                >
+                  保留原文
+                </button>
+              </div>
+            </article>
+            <details class="wb-hunks__full">
+              <summary>查看整章对照</summary>
+              <div class="wb-diff">
+                <div>
+                  <div class="wb-diff__label">修稿前</div>
+                  <pre class="wb-diff__text">{{ previewBase }}</pre>
+                </div>
+                <div class="wb-diff__col--next">
+                  <div class="wb-diff__label">修稿后</div>
+                  <pre class="wb-diff__text">{{ previewRevised }}</pre>
+                </div>
+              </div>
+            </details>
           </div>
-          <div class="wb-diff__col--next">
-            <div class="wb-diff__label">修稿后</div>
-            <pre class="wb-diff__text">{{ previewRevised }}</pre>
+          <div v-else class="wb-diff">
+            <div>
+              <div class="wb-diff__label">修稿前</div>
+              <pre class="wb-diff__text">{{ previewBase }}</pre>
+            </div>
+            <div class="wb-diff__col--next">
+              <div class="wb-diff__label">修稿后</div>
+              <pre class="wb-diff__text">{{ previewRevised }}</pre>
+            </div>
           </div>
-          <div class="wb-diff__actions">
-            <button type="button" class="btn" :disabled="reviseBusy" @click="confirmSelectedRevise">
-              {{ confirmBusy ? '写入中…' : '写入这版修改' }}
+          <div class="wb-revise__actions">
+            <button
+              type="button"
+              class="btn"
+              :disabled="reviseBusy || (previewHunks.length > 0 && adoptedHunkCount === 0)"
+              @click="confirmSelectedRevise"
+            >
+              {{ confirmLabel }}
             </button>
             <button type="button" class="btn-ghost" :disabled="reviseBusy" @click="clearPreview">放弃预览</button>
           </div>

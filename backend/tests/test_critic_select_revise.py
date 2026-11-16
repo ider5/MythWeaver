@@ -14,6 +14,7 @@ from app.main import create_app
 from app.models import Chapter, ChapterVersion, Novel
 from app.schemas.generation import ConsistencyIssue
 from app.services.consistency import critic_revise_selected
+from app.services.paragraph_hunks import paragraph_hunks
 import app.db as db_mod
 
 
@@ -105,6 +106,8 @@ async def test_critic_select_preview_and_confirm(client: AsyncClient):
     assert body["changed"] is True
     assert body["version_id"] is None
     assert "修好" in body["revised_content"] or body["revised_content"] != body["base_content"]
+    assert body["hunks"]
+    assert {item["op"] for item in body["hunks"]} <= {"replace", "insert", "delete"}
 
     confirm = await client.post(
         f"/api/novels/{nid}/chapters/{cid}/critic-select-revise",
@@ -142,3 +145,76 @@ async def test_critic_revise_selected_empty_noop(client: AsyncClient):
         )
         assert text == "原文"
         assert report.ok is True
+
+
+@pytest.mark.asyncio
+async def test_confirm_paragraph_hunks_without_second_rewrite(client: AsyncClient, monkeypatch):
+    nid, cid = await _seed()
+
+    async def boom(*_args, **_kwargs):
+        raise AssertionError("按段写入不应再跑修稿")
+
+    monkeypatch.setattr("app.routers.novels.critic_revise_selected", boom)
+    base = "甲段保持。\n\n乙段要改。\n\n丙段保持。"
+    revised = "甲段保持。\n\n乙段已改。\n\n丙段保持。\n\n丁段新增。"
+    hunks = paragraph_hunks(base, revised)
+    decisions = [
+        {"id": item["id"], "accept": item["op"] != "insert"} for item in hunks
+    ]
+    saved = await client.post(
+        f"/api/novels/{nid}/chapters/{cid}/critic-select-revise",
+        json={
+            "content": base,
+            "issues": [{"type": "ai_voice", "severity": "warning", "message": "套话"}],
+            "confirm": True,
+            "commit_to_knowledge": False,
+            "revised_content": revised,
+            "hunk_decisions": decisions,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["changed"] is True
+    assert "乙段已改" in body["revised_content"]
+    assert "丁段新增" not in body["revised_content"]
+    assert "甲段保持" in body["revised_content"]
+    assert "丙段保持" in body["revised_content"]
+
+    dropped = await client.post(
+        f"/api/novels/{nid}/chapters/{cid}/critic-select-revise",
+        json={
+            "content": base,
+            "issues": [{"type": "ai_voice", "severity": "warning", "message": "套话"}],
+            "confirm": True,
+            "commit_to_knowledge": False,
+            "revised_content": revised,
+            "hunk_decisions": [{"id": item["id"], "accept": False} for item in hunks],
+        },
+    )
+    assert dropped.status_code == 200, dropped.text
+    assert dropped.json()["changed"] is False
+    assert dropped.json()["version_id"] is None
+    assert dropped.json()["revised_content"] == base
+
+    missing = await client.post(
+        f"/api/novels/{nid}/chapters/{cid}/critic-select-revise",
+        json={
+            "content": base,
+            "issues": [{"type": "ai_voice", "severity": "warning", "message": "套话"}],
+            "confirm": True,
+            "hunk_decisions": [{"id": hunks[0]["id"], "accept": True}],
+        },
+    )
+    assert missing.status_code == 400
+
+    unknown = await client.post(
+        f"/api/novels/{nid}/chapters/{cid}/critic-select-revise",
+        json={
+            "content": base,
+            "issues": [{"type": "ai_voice", "severity": "warning", "message": "套话"}],
+            "confirm": True,
+            "revised_content": revised,
+            "hunk_decisions": [{"id": "h99", "accept": True}],
+        },
+    )
+    assert unknown.status_code == 400
