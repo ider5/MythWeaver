@@ -127,7 +127,7 @@ MythWeaver/
 - Python **3.11+**
 - Node.js 18+（本地前端；CI 使用 Node 20）
 - 可用的 LLM API（OpenAI 兼容和/或 Anthropic）
-- 自托管时需要 Docker Compose
+- 自托管时需要 Docker Compose v2.24+（`docker compose`）
 
 ### 快速开始
 
@@ -138,7 +138,7 @@ cd backend
 cp .env.example .env          # Windows: copy .env.example .env
 ```
 
-编辑 `backend/.env`，填入摘要、生成、Embedding 的 `API_KEY`、`BASE_URL` 与模型名。不要提交真实密钥。
+编辑 `backend/.env`，填入摘要、生成、Embedding 的 `API_KEY`、`BASE_URL` 与模型名。不要提交真实密钥。本地后端读取这份文件。只使用第 4 步的 Docker 时，密钥可以后补。
 
 #### 2. 后端
 
@@ -165,22 +165,51 @@ npm run dev
 
 #### 4. 打包与一键部署
 
-先准备 `backend/.env`。密钥留在环境文件里，不打进镜像。
+在仓库根目录执行（全新克隆即可，不必先安装 Python / Node）：
 
 ```bash
-make up      # docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
-打开 **http://localhost:8080**。nginx 把 `/api` 反代到后端；数据在卷 `mythweaver-data`。前端会等后端 `/api/health` 通过后再启动。`make down` 停止。
+`make up` 是同一条命令。浏览器打开 **http://localhost:8080**。nginx 提供前端，并把 `/api`（含续写 SSE）反代到后端。SQLite 与导入备份在命名卷 `mythweaver-data`（容器内 `/data`）。`--wait` 等到 `/api/health` 返回成功。`make down` 或 `docker compose down` 停止；加上 `-v` 会删除数据卷。
 
-只构建镜像（需要 Docker，且已有 `backend/.env`）：
+密钥写在 `backend/.env`（已 gitignore），由 Compose 在启动时注入。要调用模型时：
+
+```bash
+cp backend/.env.example backend/.env
+# 填入密钥后重建容器，环境变量才会更新
+docker compose up -d --force-recreate --wait
+```
+
+未提供 `backend/.env` 时界面可以打开。`/api/health` 在数据库可写时返回 HTTP 200；续写密钥配好之前 `ready` 为 false。
+
+Compose 已设置这些值（会盖过 `.env` 里的同名项）：
+
+| 变量 | 值 | 作用 |
+|---|---|---|
+| `DATA_DIR` | `/data` | 数据库与导入备份，对应卷 `mythweaver-data` |
+| `CORS_ORIGINS` | `http://localhost:8080` 与 `127.0.0.1:8080` | 浏览器跨域来源。经 nginx 同源打开页面时请求不走跨域 |
+| `DEBUG` | `false` | 关闭 SQL 回显 |
+
+调用模型前在 `backend/.env` 写入（模板里的 `sk-your-*` 视为未配置）：
+
+| 用途 | 变量 |
+|---|---|
+| 摘要 / 抽取 | `SUMMARY_PROVIDER`、`SUMMARY_BASE_URL`、`SUMMARY_API_KEY`、`SUMMARY_MODEL` |
+| 大纲 / 续写 | `GENERATION_PROVIDER`、`GENERATION_BASE_URL`、`GENERATION_API_KEY`、`GENERATION_MODEL` |
+| 向量 | `EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`、`EMBEDDING_DIMS` |
+
+`SUMMARY_PROVIDER` / `GENERATION_PROVIDER` 取 `openai` 或 `anthropic`。并发、篇幅、单价见 `backend/.env.example`，省略时用代码默认值。命名模型档案保存在数据卷的 SQLite 里。
+
+需要 Docker Compose v2.24+。
+
+只构建镜像：
 
 ```bash
 make package                  # ./scripts/package.sh docker
-docker compose up -d
 ```
 
-只产出前端静态文件（自行用 nginx 托管，并把 `/api` 反代到后端 8000）：
+只产出前端静态文件（自行托管，并把 `/api` 反代到本机 `127.0.0.1:8000`）：
 
 ```bash
 make dist                     # ./scripts/package.sh dist
@@ -189,7 +218,7 @@ make dist                     # ./scripts/package.sh dist
 
 ### 配置
 
-配置在 `backend/.env`，模板 `backend/.env.example`。
+配置在 `backend/.env`，模板 `backend/.env.example`。Docker 在启动时读取它；构建镜像不包含该文件。
 
 - `SUMMARY_PROVIDER` / `GENERATION_PROVIDER`：`openai` 或 `anthropic`，各自有 `*_BASE_URL`、`*_API_KEY`、`*_MODEL`
 - Embedding 走 OpenAI 兼容端点：`EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMS`。Kimi 官方没有 embedding，需要另配向量服务
@@ -382,7 +411,7 @@ MythWeaver/
 - Python **3.11+**
 - Node.js 18+ for the local frontend (CI uses Node 20)
 - An LLM API (OpenAI-compatible and/or Anthropic)
-- Docker Compose for the self-host path
+- Docker Compose v2.24+ for the self-host path (`docker compose`)
 
 ### Quick start
 
@@ -393,7 +422,7 @@ cd backend
 cp .env.example .env          # Windows: copy .env.example .env
 ```
 
-Edit `backend/.env`. Set `API_KEY`, `BASE_URL`, and model names for summary, generation, and embedding. Do not commit real keys.
+Edit `backend/.env`. Set `API_KEY`, `BASE_URL`, and model names for summary, generation, and embedding. Do not commit real keys. The local backend reads this file. For the Docker path in step 4, keys can be added later.
 
 #### 2. Backend
 
@@ -420,22 +449,51 @@ Open the URL Vite prints (default `http://localhost:5173`). In dev, `/api` is pr
 
 #### 4. Package and one-command deploy
 
-Prepare `backend/.env` first. Keys stay in that file; they are not baked into the image.
+From a fresh clone, at the repository root (Python and Node are not required on the host):
 
 ```bash
-make up      # docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
-Open **http://localhost:8080**. nginx proxies `/api` to the backend. Data lives in the `mythweaver-data` volume. The frontend waits until `/api/health` succeeds. `make down` stops the stack.
+`make up` runs the same command. Open **http://localhost:8080**. nginx serves the UI and proxies `/api`, including continuation SSE, to the backend. SQLite and import backups live in the `mythweaver-data` volume (`/data` in the container). `--wait` returns after `/api/health` succeeds. `make down` or `docker compose down` stops the stack; add `-v` to delete the data volume.
 
-Build images only (Docker required, and `backend/.env` must exist):
+Keys belong in `backend/.env` (gitignored) and are injected when the container starts. To call models:
+
+```bash
+cp backend/.env.example backend/.env
+# recreate so the new environment is applied
+docker compose up -d --force-recreate --wait
+```
+
+With no `backend/.env`, the UI still opens. `/api/health` returns HTTP 200 when the database is writable; `ready` stays false until a generation key is set.
+
+Compose sets these and overrides the same names in `.env`:
+
+| Variable | Value | Role |
+|---|---|---|
+| `DATA_DIR` | `/data` | Database and import backups, volume `mythweaver-data` |
+| `CORS_ORIGINS` | `http://localhost:8080` and `127.0.0.1:8080` | Browser origins. Same-origin use through nginx does not depend on CORS |
+| `DEBUG` | `false` | Turns off SQL echo |
+
+Set these in `backend/.env` before calling models (`sk-your-*` placeholders count as unset):
+
+| Use | Variables |
+|---|---|
+| Summary / extract | `SUMMARY_PROVIDER`, `SUMMARY_BASE_URL`, `SUMMARY_API_KEY`, `SUMMARY_MODEL` |
+| Outline / continuation | `GENERATION_PROVIDER`, `GENERATION_BASE_URL`, `GENERATION_API_KEY`, `GENERATION_MODEL` |
+| Embeddings | `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMS` |
+
+`SUMMARY_PROVIDER` / `GENERATION_PROVIDER` are `openai` or `anthropic`. Concurrency, length, and prices are in `backend/.env.example`; omitted values use the code defaults. Named model profiles are stored in the SQLite file on the data volume.
+
+Requires Docker Compose v2.24+.
+
+Build images only:
 
 ```bash
 make package                  # ./scripts/package.sh docker
-docker compose up -d
 ```
 
-Frontend static files only (serve them yourself and proxy `/api` to backend port 8000):
+Frontend static files only (serve them yourself and proxy `/api` to `127.0.0.1:8000`):
 
 ```bash
 make dist                     # ./scripts/package.sh dist
@@ -444,7 +502,7 @@ make dist                     # ./scripts/package.sh dist
 
 ### Configuration
 
-Settings live in `backend/.env`. The template is `backend/.env.example`.
+Settings live in `backend/.env`. The template is `backend/.env.example`. Docker reads this file at startup; the image build leaves it out.
 
 - `SUMMARY_PROVIDER` / `GENERATION_PROVIDER`: `openai` or `anthropic`, each with `*_BASE_URL`, `*_API_KEY`, and `*_MODEL`
 - Embeddings use an OpenAI-compatible endpoint: `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMS`. Moonshot/Kimi has no official embedding API; point `EMBEDDING_*` at another service

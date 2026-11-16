@@ -13,7 +13,7 @@ case "$MODE" in
     mkdir -p dist/release
     rm -rf dist/release/web
     cp -R frontend/dist dist/release/web
-    echo "Wrote dist/release/web (serve behind nginx; proxy /api to backend:8000)"
+    echo "Wrote dist/release/web (serve these files and proxy /api to 127.0.0.1:8000)"
     ;;
   docker)
     if ! command -v docker >/dev/null 2>&1; then
@@ -21,12 +21,13 @@ case "$MODE" in
       exit 1
     fi
     if [[ ! -f backend/.env ]]; then
-      echo "Missing backend/.env — copy from backend/.env.example first" >&2
-      exit 1
+      echo "Note: backend/.env is absent. The UI still starts; copy backend/.env.example and recreate before calling models."
     fi
+    echo "==> docker compose config"
+    docker compose config >/dev/null
     echo "==> docker compose build"
     docker compose build
-    echo "OK. Start with: docker compose up -d"
+    echo "OK. Start with: docker compose up -d --wait"
     echo "Open http://localhost:8080"
     ;;
   *)
