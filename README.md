@@ -117,6 +117,10 @@ docker compose up --build
 
 密钥是否已配置可通过 `GET /api/config` 查看（不返回明文 key）。
 
+### 厂商预设与连接测试
+
+前端「LLM 设置」页（`/settings/providers`）提供常见 OpenAI 兼容厂商预设（OpenAI、DeepSeek、Moonshot、通义、智谱、OpenRouter、Ollama、自定义）。选择预设会填入默认 Base URL 与模型；「测试连接」调用 `POST /api/providers/test`，密钥**仅用于本次探测、不落库**。测通后请把相同值写入 `backend/.env` 的 `SUMMARY_*` / `GENERATION_*` / `EMBEDDING_*`。
+
 ## 测试
 
 ```bash
