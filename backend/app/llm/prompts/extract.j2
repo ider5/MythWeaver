@@ -1,9 +1,11 @@
 从这一章抽取明确写到的设定。不确定的不要编。严格输出 JSON（不要 markdown 代码块）：
 {
-  "characters": [{"name": "", "aliases": [], "role": "", "status": "", "personality": "", "speech_style": ""}],
-  "world_settings": [{"category": "力量体系|地理|组织|规则", "title": "", "content": "", "do_not_violate": ""}],
-  "plot_threads": [{"title": "", "description": "", "thread_type": "伏笔|主线|支线", "status": "未回收", "planned_resolve_chapter": null}]
+  "characters": [{"name": "", "aliases": [], "role": "", "status": "", "personality": "", "speech_style": "", "evidence": ""}],
+  "world_settings": [{"category": "力量体系|地理|组织|规则", "title": "", "content": "", "do_not_violate": "", "evidence": ""}],
+  "plot_threads": [{"title": "", "description": "", "thread_type": "伏笔|主线|支线", "status": "未回收", "planned_resolve_chapter": null, "evidence": ""}]
 }
+
+evidence 只在能从正文原样抄出一句话时填写。对不上就省略，不要改写，不要编一句。
 
 planned_resolve_chapter 只在正文明确写出计划于第几章回收时填正整数，否则 null。
 

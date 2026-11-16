@@ -2368,6 +2368,93 @@ a.home-go {
   border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
 }
 
+.wb-revise {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.wb-hunks__bar,
+.wb-hunk__head,
+.wb-hunk__actions,
+.wb-revise__actions,
+.wb-hunks__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+}
+
+.wb-hunks__bar {
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.wb-hunks__bar .meta {
+  margin: 0;
+}
+
+.wb-hunk {
+  padding: 0.75rem 0.85rem 0.8rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.wb-hunk.is-kept {
+  opacity: 0.62;
+}
+
+.wb-hunk__head {
+  justify-content: space-between;
+}
+
+.wb-hunk__state {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.wb-hunk.is-kept .wb-hunk__state {
+  color: var(--ink-muted);
+}
+
+.wb-hunk__text {
+  margin: 0.45rem 0 0;
+  font-family: var(--font-prose);
+  font-size: 1.02rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wb-hunk__before {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.wb-hunk__actions {
+  margin-top: 0.65rem;
+}
+
+.wb-hunk__actions .btn-ghost.is-on,
+.wb-hunk__actions .btn-ghost.is-on:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+
+.wb-hunks__full summary {
+  cursor: pointer;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.wb-hunks__full .wb-diff {
+  margin-top: 0.65rem;
+}
+
 .wb-outline {
   display: grid;
   gap: 0.95rem;

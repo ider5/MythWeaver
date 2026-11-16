@@ -59,7 +59,7 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 | GET | `/api/novels/{id}/chapters/{cid}` | 章节正文 |
 | GET | `/api/novels/{id}/chapters/{cid}/versions` | 版本链 |
 | POST | `/api/novels/{id}/chapters/{cid}/revise` | `{ content, commit_to_knowledge }` |
-| POST | `/api/novels/{id}/chapters/{cid}/critic-select-revise` | 按勾选问题修稿：`{ content, issues[], confirm?, commit_to_knowledge? }` → `{ base_content, revised_content, consistency, changed, version_id?, task_id? }`；`confirm=false` 仅预览不落库 |
+| POST | `/api/novels/{id}/chapters/{cid}/critic-select-revise` | 按勾选问题修稿。预览：`{ content, issues[], confirm:false }` → `{ base_content, revised_content, consistency, changed, hunks[] }`。`hunks` 只列有改动的段：`replace` / `insert` / `delete`。`confirm=true` 且带 `revised_content` 与 `hunk_decisions: [{id, accept}]` 时按段合并后写入，不再重跑修稿；`accept=false` 保留该段原文。省略 `hunk_decisions` 时仍整章重跑并写入。缺预览正文或段落 id 对不上返回 400 |
 
 `role` 缺省为 `manuscript`。`origin` 缺省为 `import`。参考本可以抽取 Story Bible 与文风，但章节不作为续写来源：`POST /api/novels/{id}/generate` 返回 409；`GET .../generate/stream` 只发出 SSE `error`，不改状态、不写章节。
 
@@ -81,6 +81,7 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 - `POST|PATCH|DELETE /characters[/{cid}]`
 - `POST|PATCH|DELETE /world-settings[/{wid}]`
 - `POST|PATCH|DELETE /plot-threads[/{tid}]`
+- 生成章提案 `changes[].quote` 是正文里的原句。对不上原文时该字段为空，不会编一句
 
 ## 大纲
 

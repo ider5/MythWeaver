@@ -190,6 +190,7 @@ async def _proposal_out(session: AsyncSession, row) -> BibleProposalOut:
                 target_id=raw.get("target_id"),
                 label=raw.get("label") or "",
                 summary=raw.get("summary") or "",
+                quote=raw.get("quote") or None,
                 fields=[WritebackFieldOut(**field) for field in (raw.get("fields") or [])],
                 after=raw.get("after") or {},
             )

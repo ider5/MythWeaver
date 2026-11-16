@@ -114,6 +114,7 @@ class WritebackChangeOut(BaseModel):
     target_id: Optional[int] = None
     label: str
     summary: str
+    quote: Optional[str] = None
     fields: list[WritebackFieldOut] = Field(default_factory=list)
     after: dict[str, Any] = Field(default_factory=dict)
 

@@ -9,12 +9,12 @@ A single-machine workbench for continuing web novels. Layered summaries, vector 
 ## Capabilities
 
 - **Ingest**: split chapters, summarize chapters and volumes, extract entities, embed with sqlite-vec. Chapters that are already embedded are skipped; unfinished chapters resume summary and extraction from their status. Progress is SSE.
-- **Post-chapter write-back**: after a chapter is generated, list new/updated characters, settings, and plot threads against the Story Bible; apply only after confirm. Manuscript ingest still merges automatically.
+- **Post-chapter write-back**: after a chapter is generated, list new/updated characters, settings, and plot threads against the Story Bible; apply only after confirm. A proposal quotes a source sentence when that sentence is in the chapter, and leaves the quote off when it is not. Manuscript ingest still merges automatically.
 - **Story Bible**: characters (with aliases), world settings, and plot threads, all editable. Relationships become a graph: a name that matches a card or an alias links to that character. Foreshadowing, main plots, and side plots are laid out on a timeline by the chapter where they appear and the chapter where they resolve. The graph and timeline are drawn in the frontend from Bible data.
 - **Outline first**: generate, edit, and confirm before writing. Each beat has a blueprint: the lead's goal, conflict and turn, end hook, on-stage characters, and key points. After confirmation those fields go into retrieval and the generation prompt.
 - **Streaming continuation**: SSE. Context assembles recent prose, summaries, RAG, the Bible, style samples, and recurrent memory.
 - **Director**: on a confirmed outline, write up to 10 consecutive chapters from a chosen order. If the critic fails, generation errors, or the task is cancelled, the chapter in progress finishes and the next one does not start.
-- **Consistency critic**: rules plus an LLM, at most 2 automatic revise rounds, plus an issue report. **LangGraph** is the default (`AGENT_RUNTIME=langgraph`); `legacy` is the fallback. On the review step you select issues, preview a revision, and confirm before it is saved.
+- **Consistency critic**: rules plus an LLM, at most 2 automatic revise rounds, plus an issue report. **LangGraph** is the default (`AGENT_RUNTIME=langgraph`); `legacy` is the fallback. On the review step you select issues, preview a revision, then accept or keep the original text paragraph by paragraph.
 - **Tasks**: cancel a queued or running task. Retry is available for failed or cancelled ingest, outline generation, and revise-commit when the task is recoverable.
 - **Usage**: stage model routes, plus token and estimated cost totals per purpose.
 - **Stage skills**: a SKILL.md stores prompt text only, bound to outline, draft, critic, or revise. The text is shown before install. Scripts are not executed, and files beside the skill are not read.
@@ -60,7 +60,7 @@ Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**,
 - With no outline items: an empty book asks you to generate an outline or import source text; an ingested book asks you to confirm an outline before the next chapter.
 - Streaming can target 1500–30000 characters. Consistency checking can be turned off. Critic rounds are 0–2. A chapter longer than `CHAPTER_SEGMENT_THRESHOLD` (default 4500 characters) is generated in segments from the key points: it is checked, and the whole chapter is not rewritten.
 - Versions: `generated` (draft), `critic_revised` (Critic), `user_edited` (revision).
-- In review, select issues, preview a revision, then confirm before it is written. “Save revision and ingest” updates summaries, entities, vectors, and memory. A failed commit can be retried.
+- In review, select issues and preview a revision. Each changed paragraph can be accepted or kept as the original; accepting every paragraph writes the whole preview. “Save revision and ingest” updates summaries, entities, vectors, and memory. A failed commit can be retried.
 
 ## Manuscript and reference
 

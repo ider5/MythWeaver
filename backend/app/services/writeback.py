@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -398,6 +399,139 @@ def _thread_change(raw: dict, existing: Any | None, *, chapter_index: int | None
     )
 
 
+_GENERIC_QUOTE_VALUES = {
+    "未回收",
+    "已回收",
+    "伏笔",
+    "主线",
+    "支线",
+    "规则",
+    "力量体系",
+    "地理",
+    "组织",
+    "主角",
+    "配角",
+    "在场",
+}
+_QUOTE_LIMIT = 180
+
+
+def _sentences(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    sentences: list[str] = []
+    buf: list[str] = []
+    for ch in normalized:
+        if ch == "\n":
+            sentence = "".join(buf).strip()
+            if sentence:
+                sentences.append(sentence)
+            buf = []
+            continue
+        buf.append(ch)
+        if ch in "。！？!?":
+            sentence = "".join(buf).strip()
+            if sentence:
+                sentences.append(sentence)
+            buf = []
+    tail = "".join(buf).strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def _clip(sentence: str, needle: str, limit: int = _QUOTE_LIMIT) -> str:
+    if len(sentence) <= limit:
+        return sentence
+    probe = needle.strip()
+    idx = sentence.find(probe) if probe and probe in sentence else -1
+    if idx < 0:
+        return sentence[:limit]
+    take = min(len(probe), limit)
+    start = max(0, idx - (limit - take) // 2)
+    end = min(len(sentence), start + limit)
+    start = max(0, end - limit)
+    return sentence[start:end]
+
+
+def _sentence_with(chapter: str, needle: str) -> str | None:
+    probe = needle.strip()
+    if len(probe) < 2 or probe in _GENERIC_QUOTE_VALUES:
+        return None
+    compact_needle = _compact(probe)
+    if len(compact_needle) < 2:
+        return None
+    for sentence in _sentences(chapter):
+        if probe in sentence:
+            window = _clip(sentence, probe)
+            return window if probe in window or len(probe) > _QUOTE_LIMIT else None
+        if compact_needle in _compact(sentence) and len(sentence) <= _QUOTE_LIMIT:
+            return sentence
+    return None
+
+
+def source_quote(chapter: str | None, evidence: str | None, needles: list[str]) -> str | None:
+    """只引用章节里真实出现的句子。对不上就返回空，不编一句。"""
+    if not chapter or not chapter.strip():
+        return None
+    if evidence and evidence.strip():
+        found = _sentence_with(chapter, evidence)
+        if found:
+            return found
+    ranked = sorted(
+        {
+            item.strip()
+            for item in needles
+            if item and item.strip() and item.strip() not in _GENERIC_QUOTE_VALUES
+        },
+        key=len,
+        reverse=True,
+    )
+    for needle in ranked:
+        found = _sentence_with(chapter, needle)
+        if found:
+            return found
+    return None
+
+
+def _quote_needles(change: dict) -> list[str]:
+    after = change.get("after") or {}
+    fields = {field["key"]: field for field in change.get("fields") or []}
+    needles: list[str] = []
+    if "aliases" in fields:
+        before = str(fields["aliases"].get("before") or "")
+        old = {part.strip() for part in re.split(r"[、,，]", before) if part.strip()}
+        for alias in after.get("aliases") or []:
+            text = str(alias).strip()
+            if text and text not in old:
+                needles.append(text)
+    for key, value in after.items():
+        if key in _CHAPTER_KEYS or key in {"name", "title", "aliases"}:
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if text and text not in _GENERIC_QUOTE_VALUES:
+                needles.append(text)
+    if change.get("op") == "create":
+        label = str(change.get("label") or "").strip()
+        if label and label not in _GENERIC_QUOTE_VALUES:
+            needles.append(label)
+    return needles
+
+
+def _with_quote(change: dict | None, raw: dict, chapter_text: str | None) -> dict | None:
+    if change is None or not chapter_text:
+        return change
+    evidence = _text(raw.get("evidence") or raw.get("quote") or "")
+    quote = source_quote(chapter_text, evidence, _quote_needles(change))
+    if quote:
+        change["quote"] = quote
+    return change
+
+
 def build_writeback_changes(
     characters: list,
     world_settings: list,
@@ -405,6 +539,7 @@ def build_writeback_changes(
     extraction: dict[str, Any] | None,
     *,
     chapter_index: int | None,
+    chapter_text: str | None = None,
 ) -> list[dict[str, Any]]:
     """对照现有 Story Bible，只保留真正有差异的新增或更新。"""
     data = extraction if isinstance(extraction, dict) else {}
@@ -428,22 +563,26 @@ def build_writeback_changes(
             continue
         if existing_id is not None:
             used_characters.add(existing_id)
-        emit(_character_change(raw, existing, chapter_index=chapter_index))
+        emit(_with_quote(_character_change(raw, existing, chapter_index=chapter_index), raw, chapter_text))
 
     for raw in data.get("world_settings") or []:
         if not isinstance(raw, dict):
             continue
         title = _norm_name(str(raw.get("title") or "")) or _norm_name(_text(raw.get("content"))[:20])
-        emit(_world_change(raw, _match_title(world_settings, title)))
+        emit(_with_quote(_world_change(raw, _match_title(world_settings, title)), raw, chapter_text))
 
     for raw in data.get("plot_threads") or []:
         if not isinstance(raw, dict):
             continue
         emit(
-            _thread_change(
+            _with_quote(
+                _thread_change(
+                    raw,
+                    _match_title(plot_threads, _text(raw.get("title"))),
+                    chapter_index=chapter_index,
+                ),
                 raw,
-                _match_title(plot_threads, _text(raw.get("title"))),
-                chapter_index=chapter_index,
+                chapter_text,
             )
         )
     return changes
@@ -518,6 +657,7 @@ async def _diff_chapter(
         bible["plot_threads"],
         extraction,
         chapter_index=chapter.index,
+        chapter_text=chapter.content or "",
     )
 
 

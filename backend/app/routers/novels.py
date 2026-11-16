@@ -21,6 +21,7 @@ from app.schemas.novel import (
     CommitKnowledgeOut,
     CriticSelectReviseIn,
     CriticSelectReviseOut,
+    ParagraphHunkOut,
     ImportConfirmIn,
     ImportPreviewOut,
     NovelCreate,
@@ -37,6 +38,7 @@ from app.services.epub_import import EpubImportError
 from app.services import novel_backup
 from app.services.scratch import ScratchError, normalize_origin
 from app.services.consistency import critic_revise_selected
+from app.services.paragraph_hunks import ParagraphHunkError, merge_paragraphs, paragraph_hunks
 from app.services.quality_loop import assess_chapter_quality, list_open_threads
 from app.services.novel_role import (
     REFERENCE_EXPORT_DETAIL,
@@ -554,6 +556,35 @@ async def critic_select_revise(
         for i in body.issues
     ]
     base = body.content
+    if body.confirm and body.hunk_decisions is not None:
+        if body.revised_content is None:
+            raise HTTPException(400, "按段写入需要带上预览后的正文")
+        decisions = {item.id: item.accept for item in body.hunk_decisions}
+        try:
+            revised = merge_paragraphs(base, body.revised_content, decisions)
+        except ParagraphHunkError as exc:
+            raise HTTPException(400, exc.detail) from exc
+        changed = revised.strip() != base.strip()
+        version_id = None
+        task_id = None
+        if changed:
+            ver, task_id = await revise_and_commit(
+                session,
+                chapter_id,
+                revised,
+                commit_to_knowledge=body.commit_to_knowledge,
+            )
+            version_id = ver.id
+        return CriticSelectReviseOut(
+            base_content=base,
+            revised_content=revised,
+            consistency=None,
+            changed=changed,
+            version_id=version_id,
+            task_id=task_id,
+            hunks=[ParagraphHunkOut(**row) for row in paragraph_hunks(base, body.revised_content)],
+        )
+
     revised, report = await critic_revise_selected(session, novel, base, issues)
     changed = revised.strip() != base.strip()
     version_id = None
@@ -576,6 +607,7 @@ async def critic_select_revise(
         changed=changed,
         version_id=version_id,
         task_id=task_id,
+        hunks=[ParagraphHunkOut(**row) for row in paragraph_hunks(base, revised)],
     )
 
 
