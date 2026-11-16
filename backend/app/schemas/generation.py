@@ -10,6 +10,20 @@ class GenerateChapterIn(BaseModel):
     target_chars: Optional[int] = Field(default=None, ge=500, le=30000)
 
 
+class BatchGenerateIn(BaseModel):
+    """授权一段已确认大纲，按顺序连续生成。"""
+
+    outline_id: int
+    from_order: int = Field(ge=1)
+    count: int = Field(ge=1, le=10)
+    run_critic: bool = True
+
+
+class BatchGenerateTaskOut(BaseModel):
+    task_id: int
+    status: str
+
+
 class ConsistencyIssue(BaseModel):
     type: str
     severity: str = "warning"  # info|warning|error

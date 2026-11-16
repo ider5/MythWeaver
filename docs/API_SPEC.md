@@ -69,6 +69,9 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 - `GET /api/novels/{id}/generate/stream?outline_item_id=&run_critic=&max_critic_rounds=`
 - `POST /api/novels/{id}/generate` body 同上，响应同为 SSE
+- `POST /api/novels/{id}/generate/batch` 连续生成已确认大纲中的一段：`{ outline_id, from_order, count≤10, run_critic }` → `{ task_id, status }`。按序号逐章调用同一条生成路径。进度在 `GET /api/tasks/{tid}` 的 `result.items`。Critic 报告 `ok=false` 或含 `severity=error` 时暂停，不再写后面的章。生成抛错同样停下。参考本与单章续写一样返回 409。
+
+取消用现有 `POST /api/tasks/{tid}/cancel`。正在写的一章会写完，下一章不再开始。
 
 事件 JSON：
 

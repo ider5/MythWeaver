@@ -281,6 +281,14 @@ export const outlineApi = {
     ),
 }
 
+export const generationApi = {
+  batch: (
+    novelId: number,
+    body: { outline_id: number; from_order: number; count: number; run_critic: boolean },
+  ) =>
+    api.post<{ task_id: number; status: string }>(`/novels/${novelId}/generate/batch`, body),
+}
+
 export const tasksApi = {
   get: (id: number) => api.get<Task>(`/tasks/${id}`),
   list: (novelId?: number) =>

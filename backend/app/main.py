@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.routers import generation, novels, outline, providers, story_bible, tasks
+from app.services.batch_generation import batch_generate_handler
 from app.services.ingestion import ingest_novel_handler
 from app.services.generation import revise_commit_handler
 from app.services.outline import outline_generate_handler
@@ -36,6 +37,7 @@ async def lifespan(_app: FastAPI):
     queue.register("ingest", ingest_novel_handler)
     queue.register("revise_commit", revise_commit_handler)
     queue.register("outline_generate", outline_generate_handler)
+    queue.register("batch_generate", batch_generate_handler)
     logger.info("MythWeaver 已启动，数据目录: %s", settings.data_dir)
     yield
     await close_db()

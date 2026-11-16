@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { outlineApi, tasksApi, type Outline, type OutlineItem } from '@/api'
+import BatchGeneratePanel from '@/components/BatchGeneratePanel.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 
 const route = useRoute()
@@ -18,6 +19,7 @@ const generateMessage = ref('')
 const generateError = ref('')
 const error = ref('')
 const info = ref('')
+const batching = ref(false)
 
 let generateEs: EventSource | null = null
 
@@ -42,7 +44,7 @@ async function load(preferId?: number | null) {
 }
 
 async function generate() {
-  if (generating.value || busy.value) return
+  if (generating.value || busy.value || batching.value) return
   generating.value = true
   generateFailed.value = false
   generateError.value = ''
@@ -148,7 +150,7 @@ function updateItem(item: OutlineItem, field: string, value: string) {
 }
 
 async function save() {
-  if (!current.value || generating.value) return
+  if (!current.value || generating.value || batching.value) return
   busy.value = true
   error.value = ''
   info.value = ''
@@ -178,7 +180,7 @@ async function save() {
 }
 
 async function confirm() {
-  if (!current.value || generating.value) return
+  if (!current.value || generating.value || batching.value) return
   await save()
   const { data } = await outlineApi.confirm(novelId, current.value.id)
   current.value = data
@@ -187,7 +189,7 @@ async function confirm() {
 }
 
 async function removeOutline(o: Outline) {
-  if (generating.value) return
+  if (generating.value || batching.value) return
   const linkedDone = (o.items || []).some((i) => i.status === 'done')
   const lines = [
     o.status === 'confirmed'
@@ -234,7 +236,7 @@ onUnmounted(() => closeGenerateEs())
             min="1"
             max="30"
             class="input w-24"
-            :disabled="generating"
+            :disabled="generating || batching"
           />
         </div>
         <div class="flex-1 min-w-[200px]">
@@ -243,23 +245,23 @@ onUnmounted(() => closeGenerateEs())
             v-model="guidance"
             class="input"
             placeholder="例如：先打小怪再揭秘身世"
-            :disabled="generating"
+            :disabled="generating || batching"
           />
         </div>
       </div>
       <div class="toolbar__actions">
-        <button class="btn" :disabled="busy || generating" @click="generate">
+        <button class="btn" :disabled="busy || generating || batching" @click="generate">
           {{ generating ? '生成中…' : '生成大纲' }}
         </button>
-        <button class="btn-ghost" :disabled="!current || busy || generating" @click="save">
+        <button class="btn-ghost" :disabled="!current || busy || generating || batching" @click="save">
           保存编辑
         </button>
-        <button class="btn-ghost" :disabled="!current || busy || generating" @click="confirm">
+        <button class="btn-ghost" :disabled="!current || busy || generating || batching" @click="confirm">
           确认大纲
         </button>
         <button
           class="btn-danger"
-          :disabled="!current || busy || generating"
+          :disabled="!current || busy || generating || batching"
           @click="current && removeOutline(current)"
         >
           删除当前大纲
@@ -279,10 +281,18 @@ onUnmounted(() => closeGenerateEs())
         {{ generateError }}
       </p>
       <p class="meta mt-2">准备上下文 → 调用模型生成 → 解析校正章号 → 落库</p>
-      <button v-if="generateFailed" class="btn mt-3" :disabled="busy || generating" @click="generate">
+      <button v-if="generateFailed" class="btn mt-3" :disabled="busy || generating || batching" @click="generate">
         重试
       </button>
     </div>
+
+    <BatchGeneratePanel
+      :novel-id="novelId"
+      :outline="current"
+      :disabled="generating || busy"
+      @running="batching = $event"
+      @finished="load(current?.id ?? null)"
+    />
 
     <p class="meta">
       草稿与已确认大纲均可删除；已生成章节正文会保留并解绑。未点「保存编辑」的本地修改刷新后会丢失。
@@ -302,7 +312,7 @@ onUnmounted(() => closeGenerateEs())
         </button>
         <button
           class="btn-danger btn-sm"
-          :disabled="busy || generating"
+          :disabled="busy || generating || batching"
           title="删除此大纲"
           @click="removeOutline(o)"
         >

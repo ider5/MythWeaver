@@ -31,7 +31,7 @@ frontend (Vue3)  --HTTP/SSE-->  backend (FastAPI)
 | `retrieval` | embedding + 关键词混合检索 |
 | `story_bible` | 人物（含别称）/世界观/伏笔 CRUD 与抽取合并 |
 | `outline` | 大纲生成、编辑、确认 |
-| `generation` | 单章流式生成、版本链、修订入库、递归记忆 |
+| `generation` | 单章流式生成、版本链、修订入库、递归记忆；`batch_generation` 按已确认大纲连续写最多 10 章，Critic 未通过则暂停 |
 | `consistency` | 规则+LLM 校验，Critic 最多 2 轮 |
 
 ## 数据模型
