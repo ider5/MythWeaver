@@ -911,6 +911,114 @@ input[type="checkbox"] {
   }
 }
 
+/* Home: brand-first first viewport */
+.home-hero {
+  position: relative;
+  margin: -0.25rem 0 2.25rem;
+  padding: 2.25rem 0 2rem;
+  overflow: hidden;
+  animation: home-rise 520ms ease both;
+}
+
+.home-hero::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto;
+  height: 18rem;
+  background:
+    radial-gradient(ellipse 70% 55% at 18% 40%, rgba(26, 92, 78, 0.14), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 88% 20%, rgba(154, 103, 0, 0.08), transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-brand,
+.home-headline,
+.home-lede,
+.home-cta {
+  position: relative;
+  z-index: 1;
+}
+
+.home-brand {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-prose);
+  font-size: clamp(2.35rem, 5.5vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+
+.home-headline {
+  margin: 0;
+  max-width: 22ch;
+  font-family: var(--font-prose);
+  font-size: clamp(1.15rem, 2.4vw, 1.45rem);
+  font-weight: 550;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.home-lede {
+  margin: 0.7rem 0 0;
+  max-width: 36rem;
+  font-size: 0.95rem;
+  color: var(--ink-muted);
+}
+
+.home-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.35rem;
+  animation: home-rise 640ms ease 80ms both;
+}
+
+.home-shelf__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.home-shelf__title {
+  margin: 0;
+  font-family: var(--font-prose);
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.home-empty {
+  animation: home-rise 480ms ease both;
+}
+
+.home-row {
+  animation: home-rise 420ms ease both;
+}
+
+.ws-head {
+  margin-bottom: 1.15rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (min-width: 768px) {
   ::-webkit-scrollbar {
     width: 10px;
