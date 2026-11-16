@@ -102,21 +102,25 @@ async def merge_extraction(
         )
         row = dup.scalar_one_or_none()
         if row is None:
-            session.add(
-                PlotThread(
-                    novel_id=novel_id,
-                    title=title,
-                    description=t.get("description"),
-                    thread_type=t.get("thread_type") or "伏笔",
-                    status=t.get("status") or "未回收",
-                    introduced_chapter=chapter_index,
-                )
+            row = PlotThread(
+                novel_id=novel_id,
+                title=title,
+                description=t.get("description"),
+                thread_type=t.get("thread_type") or "伏笔",
+                status=t.get("status") or "未回收",
+                introduced_chapter=chapter_index,
             )
+            session.add(row)
         else:
             if t.get("description"):
                 row.description = t["description"]
             if t.get("status"):
                 row.status = t["status"]
+        planned = t.get("planned_resolve_chapter")
+        if isinstance(planned, int) and planned > 0:
+            row.planned_resolve_chapter = planned
+        elif isinstance(planned, str) and planned.strip().isdigit() and int(planned) > 0:
+            row.planned_resolve_chapter = int(planned)
 
     await session.flush()
 
@@ -169,7 +173,11 @@ def format_bible_text(
     if plot_threads:
         parts.append("## 剧情线")
         for t in plot_threads:
-            parts.append(f"- ({t.status}/{t.thread_type}) {t.title}: {t.description or ''}")
+            line = f"- ({t.status}/{t.thread_type}) {t.title}: {t.description or ''}"
+            planned = getattr(t, "planned_resolve_chapter", None)
+            if planned:
+                line += f"（计划第{planned}章回收）"
+            parts.append(line)
     text = "\n".join(parts)
     if len(text) > max_chars:
         return text[:max_chars] + "…"

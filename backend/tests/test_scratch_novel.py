@@ -40,7 +40,11 @@ async def client(tmp_path, monkeypatch):
     db_mod.SessionLocal = None
     set_llm_client(
         MockLLMClient(
-            stream_text="叶凡踏入青阳秘境，铜钱骤然发热。",
+            stream_text=(
+                "叶凡踏入青阳秘境，铜钱骤然发热。"
+                + "夜风穿过石门，他按剑前行，灯火在身后一盏盏灭掉。" * 120
+                + "地图背面写着苏婉的名字。"
+            ),
             embed_dim=8,
             smart=True,
         )

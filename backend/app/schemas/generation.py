@@ -17,6 +17,38 @@ class BatchGenerateIn(BaseModel):
     from_order: int = Field(ge=1)
     count: int = Field(ge=1, le=10)
     run_critic: bool = True
+    # 只对首章、末章和每隔 3 章跑完整 Critic。篇幅和章末钩子每章都查。
+    spot_check: bool = False
+
+
+class QualityHint(BaseModel):
+    id: str
+    kind: str
+    severity: str = "info"
+    message: str
+    detail: Optional[str] = None
+
+
+class QualitySignals(BaseModel):
+    chapter_index: int
+    critical: bool = False
+    hints: list[QualityHint] = Field(default_factory=list)
+
+
+class OpenThreadOut(BaseModel):
+    id: int
+    title: str
+    thread_type: str
+    status: str
+    introduced_chapter: Optional[int] = None
+    planned_resolve_chapter: Optional[int] = None
+    due: Optional[str] = None
+    note: str = ""
+
+
+class OpenThreadsOut(BaseModel):
+    chapter_index: int
+    threads: list[OpenThreadOut] = Field(default_factory=list)
 
 
 class BatchGenerateTaskOut(BaseModel):

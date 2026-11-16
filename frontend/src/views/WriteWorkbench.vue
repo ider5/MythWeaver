@@ -1,7 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { novelsApi, outlineApi, tasksApi, type Novel, type Outline, type OutlineItem } from '@/api'
+import {
+  novelsApi,
+  outlineApi,
+  tasksApi,
+  type Novel,
+  type OpenThread,
+  type Outline,
+  type OutlineItem,
+  type QualityHint,
+} from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import WritebackReview from '@/components/WritebackReview.vue'
@@ -24,6 +33,10 @@ const streaming = ref(false)
 const status = ref('')
 const content = ref('')
 const consistency = ref<any>(null)
+const openThreads = ref<OpenThread[]>([])
+const qualityHints = ref<QualityHint[]>([])
+const dismissedHints = ref<Set<string>>(new Set())
+const DISMISS_KEY = 'mythweaver.quality.dismissed.v1'
 const chapterId = ref<number | null>(null)
 const writebackToken = ref(0)
 const writebackReload = ref(0)
@@ -98,6 +111,57 @@ const issueRows = computed(() => {
 })
 
 const selectedIssueCount = computed(() => selectedIssueKeys.value.size)
+const shownThreads = computed(() => openThreads.value.slice(0, 8))
+const hiddenThreadCount = computed(() => Math.max(0, openThreads.value.length - shownThreads.value.length))
+const deskHints = computed(() =>
+  qualityHints.value.filter((hint) => {
+    if (hint.kind === 'thread') return false
+    if (hint.severity === 'error') return true
+    return !dismissedHints.value.has(`${novelId}:${chapterId.value}:${hint.id}`)
+  }),
+)
+
+function loadDismissed() {
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    dismissedHints.value = new Set(Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [])
+  } catch {
+    dismissedHints.value = new Set()
+  }
+}
+
+function dismissHint(hint: QualityHint) {
+  if (hint.severity === 'error' || chapterId.value == null) return
+  const next = new Set(dismissedHints.value)
+  next.add(`${novelId}:${chapterId.value}:${hint.id}`)
+  dismissedHints.value = next
+  localStorage.setItem(DISMISS_KEY, JSON.stringify([...next]))
+}
+
+async function loadOpenThreads(index: number | null) {
+  if (index == null) {
+    openThreads.value = []
+    return
+  }
+  try {
+    const { data } = await novelsApi.openThreads(novelId, index)
+    if (index !== chapterIndex.value) return
+    openThreads.value = data.threads || []
+  } catch {
+    openThreads.value = []
+  }
+}
+
+async function loadQuality(cid: number, seq?: number) {
+  try {
+    const { data } = await novelsApi.chapterQuality(novelId, cid)
+    if (seq != null && seq !== loadSeq) return
+    qualityHints.value = data.hints || []
+  } catch {
+    if (seq == null || seq === loadSeq) qualityHints.value = []
+  }
+}
 
 function issueKey(i: number, iss: { type?: string; message?: string }) {
   return `${i}:${iss.type || ''}:${iss.message || ''}`
@@ -299,6 +363,7 @@ function clearEditor() {
   stream.reset('')
   stream.clearDom()
   consistency.value = null
+  qualityHints.value = []
   chapterId.value = null
   writebackToken.value = 0
   versions.value = []
@@ -423,6 +488,7 @@ async function loadChapterForItem(item: OutlineItem | null) {
     // 正文以章节表为准；报告取最新版本（不跨版本沿用旧报告）
     applyLatestVersion(vers)
     content.value = ch.content || ''
+    await loadQuality(ch.id, seq)
   } catch (e: any) {
     if (seq !== loadSeq) return
     // 404：该条目尚未生成 — 正常空编辑器，不算错误
@@ -495,6 +561,7 @@ async function startGenerate() {
   status.value = '连接中…'
   content.value = ''
   consistency.value = null
+  qualityHints.value = []
   writebackToken.value = 0
   chapterId.value = null
   versions.value = []
@@ -542,6 +609,7 @@ async function startGenerate() {
       content.value = data.content || stream.read()
       stream.clearDom()
       consistency.value = data.consistency
+      qualityHints.value = data.quality?.hints || []
       syncIssueSelection(data.consistency?.issues)
       clearPreview()
       chapterId.value = data.chapter_id
@@ -751,7 +819,13 @@ async function deleteWholeChapter() {
   }
 }
 
-onMounted(load)
+watch(chapterIndex, (index) => {
+  void loadOpenThreads(index)
+})
+onMounted(() => {
+  loadDismissed()
+  void load()
+})
 onActivated(() => {
   // 切回续写：刷新大纲状态，但尽量保留当前编辑区内容
   if (bootstrapped.value && !streaming.value) void load()
@@ -841,6 +915,22 @@ onUnmounted(() => {
           <span v-if="status" class="wb-count__status">{{ status }}</span>
         </p>
       </header>
+
+      <section class="wb-memory" aria-label="未回收线索">
+        <div class="wb-critic__head">
+          <h3>未回收线索</h3>
+          <RouterLink class="meta" :to="`/novels/${novelId}/bible`">在设定里改</RouterLink>
+        </div>
+        <ul v-if="shownThreads.length">
+          <li v-for="thread in shownThreads" :key="thread.id" :data-due="thread.due || 'open'">
+            <span class="wb-memory__title">{{ thread.title }}</span>
+            <span class="meta">{{ thread.thread_type }}</span>
+            <span class="wb-memory__note">{{ thread.note }}</span>
+          </li>
+        </ul>
+        <p v-else class="meta">这条线上还没有未回收的伏笔。</p>
+        <p v-if="hiddenThreadCount" class="meta">另有 {{ hiddenThreadCount }} 条</p>
+      </section>
 
       <div class="wb-actions">
         <button class="btn" type="button" :disabled="!selected || streaming || reviseBusy" @click="startGenerate">
@@ -1047,6 +1137,27 @@ onUnmounted(() => {
         :propose-token="writebackToken"
         :reload-token="writebackReload"
       />
+
+      <section v-if="deskHints.length" class="wb-hints" aria-label="写作提示">
+        <div class="wb-critic__head">
+          <h3>写作提示</h3>
+          <span class="meta">文风对照已保存的样本。篇幅和章末钩子会让连续生成停下。</span>
+        </div>
+        <ul>
+          <li v-for="hint in deskHints" :key="hint.id">
+            <span :class="severityClass(hint.severity)">{{ severityLabel(hint.severity) }}</span>
+            <span>{{ hint.message }}</span>
+            <button
+              v-if="hint.severity !== 'error'"
+              type="button"
+              class="btn-ghost btn-sm"
+              @click="dismissHint(hint)"
+            >
+              忽略
+            </button>
+          </li>
+        </ul>
+      </section>
 
       <section v-if="consistency" class="wb-critic" aria-label="一致性审阅">
         <div class="wb-critic__head">

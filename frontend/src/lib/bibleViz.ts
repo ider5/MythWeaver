@@ -16,6 +16,7 @@ export interface BibleThread {
   status: string
   introduced_chapter?: number | null
   resolved_chapter?: number | null
+  planned_resolve_chapter?: number | null
 }
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -668,31 +669,48 @@ function ticksFor(min: number, max: number): TimelineTick[] {
 }
 
 export function buildTimeline(threads: BibleThread[]): TimelineModel | null {
-  const marked: { thread: BibleThread; intro: number | null; resolved: number | null }[] = []
+  const marked: {
+    thread: BibleThread
+    intro: number | null
+    resolved: number | null
+    planned: number | null
+  }[] = []
   const unmarked: { id: number; title: string }[] = []
   for (const thread of threads) {
     const intro = chapterNum(thread.introduced_chapter)
     const resolved = chapterNum(thread.resolved_chapter)
-    if (intro == null && resolved == null) unmarked.push({ id: thread.id, title: thread.title })
-    else marked.push({ thread, intro, resolved })
+    const planned = chapterNum(thread.planned_resolve_chapter)
+    if (intro == null && resolved == null && planned == null) unmarked.push({ id: thread.id, title: thread.title })
+    else marked.push({ thread, intro, resolved, planned })
   }
   if (!marked.length) return null
-  const chapters = marked.flatMap((row) => [row.intro, row.resolved].filter((n): n is number => n != null))
+  const chapters = marked.flatMap((row) =>
+    [row.intro, row.resolved, row.planned].filter((n): n is number => n != null),
+  )
   const min = Math.min(...chapters)
   const max = Math.max(...chapters)
   const lanes: TimelineLane[] = marked
     .map((row) => {
       const intro = row.intro
       const resolved = row.resolved
+      const planned = row.planned
       let start: number
       let end: number
       let open = false
       if (intro != null && resolved != null) {
         start = Math.min(intro, resolved)
         end = Math.max(intro, resolved)
+      } else if (intro != null && planned != null) {
+        start = Math.min(intro, planned)
+        end = Math.max(intro, planned)
+        open = true
       } else if (intro != null) {
         start = intro
         end = max
+        open = true
+      } else if (planned != null) {
+        start = planned
+        end = planned
         open = true
       } else {
         start = resolved as number
@@ -723,9 +741,11 @@ export function buildTimeline(threads: BibleThread[]): TimelineModel | null {
 
 export function threadSpan(thread: BibleThread): string {
   const intro = chapterNum(thread.introduced_chapter)
+  const planned = chapterNum(thread.planned_resolve_chapter)
   const resolved = chapterNum(thread.resolved_chapter)
   const parts: string[] = []
   if (intro != null) parts.push(`第${intro}章出现`)
+  if (planned != null) parts.push(`计划第${planned}章回收`)
   if (resolved != null) parts.push(`第${resolved}章回收`)
   return parts.join(' · ')
 }

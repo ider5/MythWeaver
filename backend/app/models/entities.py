@@ -186,6 +186,8 @@ class PlotThread(Base):
     status: Mapped[str] = mapped_column(String(32), default="未回收")  # 未回收/已回收
     introduced_chapter: Mapped[Optional[int]] = mapped_column(Integer)
     resolved_chapter: Mapped[Optional[int]] = mapped_column(Integer)
+    # 计划在第几章回收；空表示尚未安排。已回收仍看 status / resolved_chapter。
+    planned_resolve_chapter: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

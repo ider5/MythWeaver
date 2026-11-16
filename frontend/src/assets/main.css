@@ -1990,6 +1990,47 @@ input[type="checkbox"] {
   animation: wb-live 1.5s ease-in-out infinite;
 }
 
+.wb-memory,
+.wb-hints {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.wb-memory ul,
+.wb-hints ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-memory li,
+.wb-hints li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.65rem;
+  align-items: baseline;
+  font-size: 0.9rem;
+}
+
+.wb-memory__title {
+  font-weight: 600;
+}
+
+.wb-memory li[data-due='due'] .wb-memory__note,
+.wb-memory li[data-due='overdue'] .wb-memory__note {
+  color: var(--warn);
+}
+
+.wb-memory li[data-due='approaching'] .wb-memory__note {
+  color: var(--accent);
+}
+
+.wb-hints li .btn-ghost {
+  margin-left: auto;
+}
+
 .wb-critic {
   display: grid;
   gap: 0.75rem;

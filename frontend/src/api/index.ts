@@ -91,6 +91,26 @@ export interface PlotThread {
   status: string
   introduced_chapter?: number | null
   resolved_chapter?: number | null
+  planned_resolve_chapter?: number | null
+}
+
+export interface OpenThread {
+  id: number
+  title: string
+  thread_type: string
+  status: string
+  introduced_chapter?: number | null
+  planned_resolve_chapter?: number | null
+  due?: 'approaching' | 'due' | 'overdue' | null
+  note: string
+}
+
+export interface QualityHint {
+  id: string
+  kind: string
+  severity: string
+  message: string
+  detail?: string | null
 }
 
 export interface WritebackField {
@@ -226,6 +246,14 @@ export const novelsApi = {
       outline_item_id?: number | null
       content?: string | null
     }>(`/novels/${nid}/chapters/${cid}`),
+  openThreads: (nid: number, chapterIndex: number) =>
+    api.get<{ chapter_index: number; threads: OpenThread[] }>(`/novels/${nid}/open-threads`, {
+      params: { chapter_index: chapterIndex },
+    }),
+  chapterQuality: (nid: number, cid: number) =>
+    api.get<{ chapter_index: number; critical: boolean; hints: QualityHint[] }>(
+      `/novels/${nid}/chapters/${cid}/quality`,
+    ),
   chapterByOutlineItem: (nid: number, outlineItemId: number) =>
     api.get<{
       id: number
@@ -361,7 +389,13 @@ export const outlineApi = {
 export const generationApi = {
   batch: (
     novelId: number,
-    body: { outline_id: number; from_order: number; count: number; run_critic: boolean },
+    body: {
+      outline_id: number
+      from_order: number
+      count: number
+      run_critic: boolean
+      spot_check?: boolean
+    },
   ) =>
     api.post<{ task_id: number; status: string }>(`/novels/${novelId}/generate/batch`, body),
 }

@@ -81,7 +81,20 @@ async def client(tmp_path, monkeypatch):
     db_mod.SessionLocal = None
 
 
-async def _seed(*, confirmed: bool = True, orders: tuple[int, ...] = (1, 2)) -> tuple[int, int]:
+def _long_body(seed: str = "叶凡踏入青阳秘境，玉佩骤然发光。") -> str:
+    line = "夜风穿过石门，他按剑前行，灯火在身后一盏盏灭掉。"
+    text = seed
+    while len(text) < 2600:
+        text += line
+    return text
+
+
+async def _seed(
+    *,
+    confirmed: bool = True,
+    orders: tuple[int, ...] = (1, 2),
+    suspense: str = "",
+) -> tuple[int, int]:
     assert db_mod.SessionLocal
     async with db_mod.SessionLocal() as session:
         novel = Novel(title="批测", genre="玄幻", status="ready", chapter_count=0)
@@ -103,6 +116,7 @@ async def _seed(*, confirmed: bool = True, orders: tuple[int, ...] = (1, 2)) -> 
                     title=f"第{order}节",
                     summary="向前走",
                     key_points=["打戏"],
+                    suspense_hook=suspense,
                     status="pending",
                 )
             )
@@ -112,6 +126,7 @@ async def _seed(*, confirmed: bool = True, orders: tuple[int, ...] = (1, 2)) -> 
 
 @pytest.mark.asyncio
 async def test_batch_generates_two_chapters(client):
+    set_llm_client(MockLLMClient(stream_text=_long_body(), embed_dim=8, smart=True))
     novel_id, outline_id = await _seed()
     response = await client.post(
         f"/api/novels/{novel_id}/generate/batch",
@@ -144,6 +159,50 @@ async def test_batch_generates_two_chapters(client):
         assert all(chapter.is_generated for chapter in chapters)
         assert "秘境" in chapters[0].content
         assert "秘境" in chapters[1].content
+
+
+@pytest.mark.asyncio
+async def test_batch_pauses_when_chapter_is_short(client):
+    novel_id, outline_id = await _seed()
+    response = await client.post(
+        f"/api/novels/{novel_id}/generate/batch",
+        json={"outline_id": outline_id, "from_order": 1, "count": 2, "run_critic": False},
+    )
+    assert response.status_code == 200, response.text
+    task_id = response.json()["task_id"]
+    await get_task_queue().wait_task(task_id, timeout=60)
+
+    assert db_mod.SessionLocal
+    async with db_mod.SessionLocal() as session:
+        task = await session.get(AsyncTask, task_id)
+        assert task is not None
+        assert task.status == "completed", task.error
+        assert task.result["paused"] is True
+        assert "短于" in (task.result.get("pause_reason") or "")
+        assert task.result["items"][0]["status"] == "paused"
+        assert task.result["items"][1]["status"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_batch_pauses_when_end_hook_is_missing(client):
+    set_llm_client(MockLLMClient(stream_text=_long_body(), embed_dim=8, smart=True))
+    novel_id, outline_id = await _seed(suspense="城门后站着苏婉")
+    response = await client.post(
+        f"/api/novels/{novel_id}/generate/batch",
+        json={"outline_id": outline_id, "from_order": 1, "count": 2, "run_critic": False},
+    )
+    assert response.status_code == 200, response.text
+    task_id = response.json()["task_id"]
+    await get_task_queue().wait_task(task_id, timeout=90)
+
+    assert db_mod.SessionLocal
+    async with db_mod.SessionLocal() as session:
+        task = await session.get(AsyncTask, task_id)
+        assert task is not None
+        assert task.status == "completed", task.error
+        assert task.result["paused"] is True
+        assert "钩子" in (task.result.get("pause_reason") or "")
+        assert task.result["items"][1]["status"] == "blocked"
 
 
 @pytest.mark.asyncio

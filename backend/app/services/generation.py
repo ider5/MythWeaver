@@ -15,6 +15,7 @@ from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
 from app.models import Chapter, ChapterVersion, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services.consistency import run_critic_loop
+from app.services.quality_loop import assess_chapter_quality
 from app.services.context_builder import build_context, outline_character_names
 from app.services.chapter_length import (
     ending_slice,
@@ -407,6 +408,24 @@ async def stream_generate_chapter(
                 ver.consistency_report = consistency_data
                 await session.commit()
 
+        quality_data: dict[str, Any] = {
+            "chapter_index": next_index,
+            "critical": False,
+            "hints": [],
+        }
+        try:
+            quality_data = await assess_chapter_quality(
+                session,
+                novel_id,
+                content,
+                chapter_index=next_index,
+                target_chars=resolved_target,
+                suspense_hook=item.suspense_hook or "",
+                include_local_rules=not run_critic,
+            )
+        except Exception:
+            logger.exception("quality signals failed novel=%s", novel_id)
+
         item.status = "done"
         novel.status = "ready"
         await _sync_scratch_volume(session, novel)
@@ -418,6 +437,7 @@ async def stream_generate_chapter(
             "version_id": ver.id,
             "content": content,
             "consistency": consistency_data,
+            "quality": quality_data,
             "overwritten": overwritten,
             "chapter_index": next_index,
             "target_chars": resolved_target,

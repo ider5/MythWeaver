@@ -40,6 +40,7 @@ interface BibleForm {
   thread_type: string
   introduced_chapter: string
   resolved_chapter: string
+  planned_resolve_chapter: string
 }
 
 interface RelRow {
@@ -172,6 +173,7 @@ function emptyForm(): BibleForm {
     thread_type: '伏笔',
     introduced_chapter: '',
     resolved_chapter: '',
+    planned_resolve_chapter: '',
   }
 }
 
@@ -424,6 +426,8 @@ function startEditThread(row: PlotThread) {
     status: row.status || '未回收',
     introduced_chapter: row.introduced_chapter == null ? '' : String(row.introduced_chapter),
     resolved_chapter: row.resolved_chapter == null ? '' : String(row.resolved_chapter),
+    planned_resolve_chapter:
+      row.planned_resolve_chapter == null ? '' : String(row.planned_resolve_chapter),
   }
   focusFirst()
 }
@@ -546,6 +550,7 @@ async function save() {
       }
       const intro = parseChapterField(form.value.introduced_chapter)
       const resolved = parseChapterField(form.value.resolved_chapter)
+      const planned = parseChapterField(form.value.planned_resolve_chapter)
       if (!intro.ok) {
         formError.value = intro.error
         reveal('bible-introduced')
@@ -556,6 +561,11 @@ async function save() {
         reveal('bible-resolved')
         return
       }
+      if (!planned.ok) {
+        formError.value = planned.error
+        reveal('bible-planned')
+        return
+      }
       const body: Partial<PlotThread> = {
         title,
         description: form.value.description.trim(),
@@ -563,6 +573,7 @@ async function save() {
         status: form.value.status || '未回收',
         introduced_chapter: intro.value,
         resolved_chapter: resolved.value,
+        planned_resolve_chapter: planned.value,
       }
       if (focusId) await bibleApi.updateThread(novelId, focusId, body)
       else focusId = createdId((await bibleApi.createThread(novelId, body)).data)
@@ -970,8 +981,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                       placeholder="留空表示未回收"
                     />
                   </label>
+                  <label class="bible-field">
+                    <span class="label">计划回收</span>
+                    <input
+                      id="bible-planned"
+                      v-model="form.planned_resolve_chapter"
+                      class="input"
+                      inputmode="numeric"
+                      autocomplete="off"
+                      placeholder="例如 18"
+                    />
+                  </label>
                 </div>
-                <p class="meta">留空表示还不知道。只填出现章节时，时间线上会显示为尚未回收。</p>
+                <p class="meta">留空表示还不知道。计划回收章会在续写台提醒临近或逾期；真正写完后再填回收章节。</p>
                 <label class="bible-field">
                   <span class="label">描述</span>
                   <textarea v-model="form.description" class="textarea textarea-sm" placeholder="这条线现在知道什么" />

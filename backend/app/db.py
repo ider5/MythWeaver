@@ -182,6 +182,11 @@ async def _ensure_schema_columns(conn) -> None:
         if item_names and column not in item_names:
             await conn.execute(text(f"ALTER TABLE outline_items ADD COLUMN {column} {ddl}"))
 
+    thread_rows = (await conn.execute(text("PRAGMA table_info(plot_threads)"))).fetchall()
+    thread_names = {r[1] for r in thread_rows}
+    if thread_names and "planned_resolve_chapter" not in thread_names:
+        await conn.execute(text("ALTER TABLE plot_threads ADD COLUMN planned_resolve_chapter INTEGER"))
+
 
 async def _ensure_vec_table(conn, dims: int) -> bool:
     """创建 sqlite-vec 虚拟表；维度不一致时重建。失败返回 False。"""

@@ -40,11 +40,24 @@ _FIELD_LABELS = {
     "thread_type": "类型",
     "introduced_chapter": "出现章",
     "resolved_chapter": "回收章",
+    "planned_resolve_chapter": "计划回收章",
 }
-_CHAPTER_KEYS = {"last_appear_chapter", "introduced_chapter", "resolved_chapter"}
+_CHAPTER_KEYS = {
+    "last_appear_chapter",
+    "introduced_chapter",
+    "resolved_chapter",
+    "planned_resolve_chapter",
+}
 _CHAR_PATCH = ("aliases", "role", "status", "personality", "speech_style", "last_appear_chapter")
 _WORLD_PATCH = ("category", "content", "do_not_violate")
-_THREAD_PATCH = ("description", "thread_type", "status", "introduced_chapter", "resolved_chapter")
+_THREAD_PATCH = (
+    "description",
+    "thread_type",
+    "status",
+    "introduced_chapter",
+    "resolved_chapter",
+    "planned_resolve_chapter",
+)
 
 
 class WritebackError(Exception):
@@ -91,6 +104,16 @@ def _alias_list(raw: Any, *, exclude: str = "") -> list[str]:
         seen.add(text)
         out.append(text)
     return out
+
+
+def _chapter_number(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _display(key: str, value: Any) -> str | None:
@@ -329,6 +352,10 @@ def _thread_change(raw: dict, existing: Any | None, *, chapter_index: int | None
         if after["status"] == "已回收" and chapter_index is not None:
             after["resolved_chapter"] = chapter_index
             _push_field(fields, {}, "resolved_chapter", None, chapter_index)
+        planned = _chapter_number(raw.get("planned_resolve_chapter"))
+        if planned is not None:
+            after["planned_resolve_chapter"] = planned
+            _push_field(fields, {}, "planned_resolve_chapter", None, planned)
         summary = f"回收伏笔「{title}」" if after["status"] == "已回收" else f"新增伏笔「{title}」"
         return _make_change(
             kind="thread",
@@ -353,6 +380,9 @@ def _thread_change(raw: dict, existing: Any | None, *, chapter_index: int | None
         _push_field(fields, patch, "resolved_chapter", _field(existing, "resolved_chapter"), None)
     if fields and _field(existing, "introduced_chapter") is None and chapter_index is not None:
         _push_field(fields, patch, "introduced_chapter", None, chapter_index)
+    planned = _chapter_number(raw.get("planned_resolve_chapter"))
+    if planned is not None and planned != _field(existing, "planned_resolve_chapter"):
+        _push_field(fields, patch, "planned_resolve_chapter", _field(existing, "planned_resolve_chapter"), planned)
     if not fields:
         return None
     label = patch["title"]
@@ -636,6 +666,7 @@ async def _apply_thread(session: AsyncSession, novel_id: int, change: dict) -> N
                 status=_text(after.get("status")) or "未回收",
                 introduced_chapter=after.get("introduced_chapter"),
                 resolved_chapter=after.get("resolved_chapter"),
+                planned_resolve_chapter=after.get("planned_resolve_chapter"),
             )
         )
         return
