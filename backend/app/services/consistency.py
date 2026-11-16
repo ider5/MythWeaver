@@ -250,6 +250,23 @@ async def check_consistency(
     return ConsistencyReport(ok=ok, issues=issues, raw=raw or None)
 
 
+async def critic_revise_selected(
+    session: AsyncSession,
+    novel: Novel,
+    content: str,
+    issues: list[ConsistencyIssue],
+    *,
+    critic_rounds: int = 0,
+) -> tuple[str, ConsistencyReport]:
+    """仅针对用户勾选的问题做一轮修稿预览（不落库）。"""
+    selected = [i for i in issues if i.severity != "info"]
+    if not selected:
+        report = ConsistencyReport(ok=True, issues=list(issues), critic_rounds=critic_rounds)
+        return content, report
+    report = ConsistencyReport(ok=False, issues=selected, critic_rounds=critic_rounds)
+    return await critic_revise(session, novel, content, report)
+
+
 async def critic_revise(
     session: AsyncSession,
     novel: Novel,

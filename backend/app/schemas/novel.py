@@ -101,6 +101,34 @@ class ChapterReviseOut(ORMModel):
     task_id: Optional[int] = None
 
 
+class CriticIssueIn(BaseModel):
+    type: str
+    severity: str = "warning"
+    message: str
+    detail: Optional[str] = None
+
+
+class CriticSelectReviseIn(BaseModel):
+    """按勾选问题预览修稿：不写版本、不入库。"""
+
+    content: str = Field(..., min_length=1)
+    issues: list[CriticIssueIn] = Field(..., min_length=1)
+    confirm: bool = Field(
+        default=False,
+        description="false=仅预览；true=写入 user_edited 版本（仍不自动入库，除非 commit_to_knowledge）",
+    )
+    commit_to_knowledge: bool = False
+
+
+class CriticSelectReviseOut(BaseModel):
+    base_content: str
+    revised_content: str
+    consistency: Optional[dict] = None
+    changed: bool
+    version_id: Optional[int] = None
+    task_id: Optional[int] = None
+
+
 class CommitKnowledgeOut(BaseModel):
     """仅重新入队知识库更新，不新建版本。"""
 

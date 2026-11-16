@@ -29,6 +29,13 @@ const reviseProgress = ref(0)
 const reviseMessage = ref('')
 const reviseError = ref('')
 const reviseFailed = ref(false)
+/** 勾选问题 → 修稿预览 → 确认写入 */
+const selectedIssueKeys = ref<Set<string>>(new Set())
+const previewBase = ref('')
+const previewRevised = ref('')
+const previewBusy = ref(false)
+const confirmBusy = ref(false)
+const previewError = ref('')
 /** 一致性检验 / Critic：默认开启 + 2 轮（与后端 Query 默认一致） */
 const runCritic = ref(true)
 const maxCriticRounds = ref(2)
@@ -62,7 +69,51 @@ const showNoReportHint = computed(
   () => !!chapterId.value && activeVersionId.value != null && !consistency.value && !streaming.value,
 )
 
-const reviseBusy = computed(() => revising.value)
+const reviseBusy = computed(() => revising.value || previewBusy.value || confirmBusy.value)
+
+const issueRows = computed(() => {
+  const issues = consistency.value?.issues || []
+  return issues.map((iss: any, i: number) => ({
+    key: `${i}:${iss.type}:${iss.message}`,
+    iss,
+  }))
+})
+
+const selectedIssueCount = computed(() => selectedIssueKeys.value.size)
+
+function issueKey(i: number, iss: { type?: string; message?: string }) {
+  return `${i}:${iss.type || ''}:${iss.message || ''}`
+}
+
+function syncIssueSelection(issues: any[] | undefined) {
+  const next = new Set<string>()
+  ;(issues || []).forEach((iss, i) => {
+    if ((iss.severity || '').toLowerCase() === 'info') return
+    next.add(issueKey(i, iss))
+  })
+  selectedIssueKeys.value = next
+}
+
+function toggleIssue(key: string, on: boolean) {
+  const next = new Set(selectedIssueKeys.value)
+  if (on) next.add(key)
+  else next.delete(key)
+  selectedIssueKeys.value = next
+}
+
+function selectAllIssues() {
+  selectedIssueKeys.value = new Set(issueRows.value.map((r: { key: string }) => r.key))
+}
+
+function clearIssueSelection() {
+  selectedIssueKeys.value = new Set()
+}
+
+function clearPreview() {
+  previewBase.value = ''
+  previewRevised.value = ''
+  previewError.value = ''
+}
 
 const originalAvgChars = computed(() => {
   const n = novelMeta.value
@@ -152,11 +203,15 @@ function clearEditor() {
   reviseMessage.value = ''
   reviseError.value = ''
   reviseFailed.value = false
+  selectedIssueKeys.value = new Set()
+  clearPreview()
 }
 
 function applyVersion(v: any) {
   content.value = v?.content ?? ''
   consistency.value = v?.consistency_report ?? null
+  syncIssueSelection(consistency.value?.issues)
+  clearPreview()
   activeVersionId.value = v?.id ?? null
 }
 
@@ -165,9 +220,68 @@ function applyLatestVersion(vers: any[]) {
   if (!vers.length) {
     consistency.value = null
     activeVersionId.value = null
+    selectedIssueKeys.value = new Set()
+    clearPreview()
     return
   }
   applyVersion(vers[vers.length - 1])
+}
+
+async function previewSelectedRevise() {
+  if (!chapterId.value || previewBusy.value || confirmBusy.value) return
+  const issues = issueRows.value
+    .filter((r: { key: string }) => selectedIssueKeys.value.has(r.key))
+    .map((r: { iss: any }) => r.iss)
+  if (!issues.length) {
+    previewError.value = '请先勾选要处理的问题'
+    return
+  }
+  previewBusy.value = true
+  previewError.value = ''
+  try {
+    const { data } = await novelsApi.criticSelectRevise(novelId, chapterId.value, {
+      content: content.value,
+      issues,
+      confirm: false,
+    })
+    previewBase.value = data.base_content
+    previewRevised.value = data.revised_content
+    if (!data.changed) previewError.value = '模型未改动正文（可能已跳过长章整章重写）'
+  } catch (e: any) {
+    previewError.value = apiErrorDetail(e, '预览修稿失败')
+  } finally {
+    previewBusy.value = false
+  }
+}
+
+async function confirmSelectedRevise() {
+  if (!chapterId.value || !previewRevised.value || confirmBusy.value) return
+  const issues = issueRows.value
+    .filter((r: { key: string }) => selectedIssueKeys.value.has(r.key))
+    .map((r: { iss: any }) => r.iss)
+  if (!issues.length) return
+  confirmBusy.value = true
+  previewError.value = ''
+  try {
+    const { data } = await novelsApi.criticSelectRevise(novelId, chapterId.value, {
+      content: previewBase.value || content.value,
+      issues,
+      confirm: true,
+      commit_to_knowledge: false,
+    })
+    content.value = data.revised_content
+    if (data.consistency) consistency.value = data.consistency
+    syncIssueSelection(consistency.value?.issues)
+    clearPreview()
+    status.value = '已确认修稿（未入库）；可再点「保存修订并入库」'
+    const { data: vers } = await novelsApi.versions(novelId, chapterId.value)
+    applyLatestVersion(vers)
+    if (data.revised_content) content.value = data.revised_content
+  } catch (e: any) {
+    previewError.value = apiErrorDetail(e, '确认修稿失败')
+  } finally {
+    confirmBusy.value = false
+  }
 }
 
 function apiErrorDetail(e: any, fallback: string): string {
@@ -303,6 +417,8 @@ async function startGenerate() {
       content.value = data.content || stream.read()
       stream.clearDom()
       consistency.value = data.consistency
+      syncIssueSelection(data.consistency?.issues)
+      clearPreview()
       chapterId.value = data.chapter_id
       activeVersionId.value = data.version_id ?? null
       streaming.value = false
@@ -677,26 +793,66 @@ onUnmounted(() => {
         />
       </div>
 
-      <div v-if="consistency" class="panel p-5">
-        <div class="font-medium mb-2 flex flex-wrap items-baseline gap-2">
+      <div v-if="consistency" class="panel p-5 space-y-3">
+        <div class="font-medium flex flex-wrap items-baseline gap-2">
           一致性报告
           <span class="badge" :class="consistency.ok ? 'badge--ok' : 'badge--danger'">
             {{ consistency.ok ? '通过' : '有问题' }}
           </span>
           <span class="meta">Critic {{ consistency.critic_rounds || 0 }} 轮</span>
         </div>
+        <div v-if="issueRows.length" class="flex flex-wrap gap-2 text-sm">
+          <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="selectAllIssues">
+            全选
+          </button>
+          <button type="button" class="btn-ghost btn-sm" :disabled="reviseBusy" @click="clearIssueSelection">
+            清空
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            :disabled="reviseBusy || !selectedIssueCount || !chapterId"
+            @click="previewSelectedRevise"
+          >
+            {{ previewBusy ? '预览中…' : `按勾选修稿（${selectedIssueCount}）` }}
+          </button>
+        </div>
         <ul class="space-y-1.5 text-sm">
-          <li v-for="(iss, i) in consistency.issues || []" :key="i" class="flex gap-2">
-            <span :class="severityClass(iss.severity)" :title="iss.severity">{{
-              severityLabel(iss.severity)
+          <li v-for="row in issueRows" :key="row.key" class="flex gap-2 items-start">
+            <input
+              type="checkbox"
+              class="mt-1"
+              :checked="selectedIssueKeys.has(row.key)"
+              :disabled="reviseBusy"
+              @change="toggleIssue(row.key, ($event.target as HTMLInputElement).checked)"
+            />
+            <span :class="severityClass(row.iss.severity)" :title="row.iss.severity">{{
+              severityLabel(row.iss.severity)
             }}</span>
             <span>
-              <span class="meta">{{ iss.type }}</span>
-              — {{ iss.message }}
+              <span class="meta">{{ row.iss.type }}</span>
+              — {{ row.iss.message }}
             </span>
           </li>
-          <li v-if="!(consistency.issues || []).length" class="empty">无问题</li>
+          <li v-if="!issueRows.length" class="empty">无问题</li>
         </ul>
+        <p v-if="previewError" class="alert alert--danger">{{ previewError }}</p>
+        <div v-if="previewRevised" class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <div class="meta mb-1">修稿前</div>
+            <pre class="prose-edit text-xs whitespace-pre-wrap max-h-48 overflow-auto">{{ previewBase }}</pre>
+          </div>
+          <div>
+            <div class="meta mb-1">修稿后</div>
+            <pre class="prose-edit text-xs whitespace-pre-wrap max-h-48 overflow-auto">{{ previewRevised }}</pre>
+          </div>
+          <div class="sm:col-span-2 flex flex-wrap gap-2">
+            <button type="button" class="btn" :disabled="reviseBusy" @click="confirmSelectedRevise">
+              {{ confirmBusy ? '写入中…' : '确认采用修稿' }}
+            </button>
+            <button type="button" class="btn-ghost" :disabled="reviseBusy" @click="clearPreview">放弃预览</button>
+          </div>
+        </div>
       </div>
       <div v-else-if="showNoReportHint" class="panel p-5">
         <div class="font-medium mb-1">一致性报告</div>
