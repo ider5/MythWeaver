@@ -18,11 +18,17 @@ SSE_HEADERS = {
 }
 
 
-def format_sse(data: Mapping[str, Any] | None = None, *, comment: str | None = None) -> str:
+def format_sse(
+    data: Mapping[str, Any] | None = None,
+    *,
+    comment: str | None = None,
+    event_id: int | None = None,
+) -> str:
     if comment is not None:
         return f": {comment}\n\n"
     assert data is not None
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+    prefix = f"id: {event_id}\n" if event_id is not None else ""
+    return f"{prefix}data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 async def with_heartbeat(
@@ -48,8 +54,10 @@ async def with_heartbeat(
                 logger.exception("SSE source raised")
                 yield format_sse({"event": "error", "message": f"生成失败: {exc}"})
                 break
-            yield format_sse(evt)
-            if evt.get("event") in ("done", "error"):
+            sse_id = evt.get("_sse_id")
+            body = {k: v for k, v in evt.items() if k != "_sse_id"}
+            yield format_sse(body, event_id=sse_id if isinstance(sse_id, int) else None)
+            if body.get("event") in ("done", "error"):
                 break
             pending = asyncio.create_task(anext(it))
     finally:

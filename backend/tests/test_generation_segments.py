@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.llm.client import MockLLMClient, set_llm_client
-from app.models import Novel, Outline, OutlineItem
+from app.models import Chapter, ChapterVersion, Novel, Outline, OutlineItem
 from app.services.generation import stream_generate_chapter
 import app.db as db_mod
 import app.llm.client as llm_mod
@@ -134,3 +135,57 @@ async def test_long_chapter_streams_multiple_segments(db_ready):
     # 非首段 prompt 带已写结尾，而非把全文反复塞入
     mid = client.stream_calls[1]["messages"][-1]["content"]
     assert "已写正文" in mid or "已写" in mid
+
+
+class _FailAfterFirst(MockLLMClient):
+    def __init__(self) -> None:
+        super().__init__(stream_text="第一段已经写完。", embed_dim=8, smart=True)
+        self._n = 0
+
+    async def stream(self, messages, *, endpoint=None, temperature=0.8, max_tokens=6000):
+        self._n += 1
+        if self._n >= 2:
+            raise RuntimeError("第二段断了")
+        async for chunk in super().stream(
+            messages, endpoint=endpoint, temperature=temperature, max_tokens=max_tokens
+        ):
+            yield chunk
+
+
+@pytest.mark.asyncio
+async def test_finished_segment_kept_when_later_segment_fails(db_ready):
+    set_llm_client(_FailAfterFirst())
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, item_id = await _seed_item(session, title="断章")
+
+    async with db_mod.SessionLocal() as session:
+        events = [
+            e
+            async for e in stream_generate_chapter(
+                session,
+                novel_id,
+                item_id,
+                run_critic=False,
+                max_critic_rounds=0,
+                target_chars=9000,
+            )
+        ]
+    assert any(e.get("event") == "segment" for e in events)
+    assert any("第二段断了" in (e.get("message") or "") for e in events)
+
+    async with db_mod.SessionLocal() as session:
+        chapter = await session.scalar(select(Chapter).where(Chapter.novel_id == novel_id))
+        assert chapter is not None
+        assert "第一段已经写完" in (chapter.content or "")
+        versions = (
+            await session.execute(
+                select(ChapterVersion).where(ChapterVersion.chapter_id == chapter.id)
+            )
+        ).scalars().all()
+        assert versions
+        assert all(row.version_type == "segment" for row in versions)
+        item = await session.get(OutlineItem, item_id)
+        novel = await session.get(Novel, novel_id)
+        assert item is not None and item.status == "pending"
+        assert novel is not None and novel.status == "ready"

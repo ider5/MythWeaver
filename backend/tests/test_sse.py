@@ -97,3 +97,21 @@ def test_format_sse_comment_and_data():
     line = format_sse({"event": "ping"})
     assert line.startswith("data: ")
     assert json.loads(line[6:].strip()) == {"event": "ping"}
+    identified = format_sse({"event": "status", "message": "ok"}, event_id=3)
+    assert identified.startswith("id: 3\n")
+    payload = identified.split("data: ", 1)[1].strip()
+    assert json.loads(payload)["message"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_chapter_stream_replays_after_cursor():
+    from app.services.chapter_stream import LiveChapterStream
+
+    stream = LiveChapterStream()
+    stream.publish({"event": "delta", "text": "甲"})
+    stream.publish({"event": "delta", "text": "乙"})
+    got: list[tuple[int, str]] = []
+    async for seq, evt in stream.subscribe(1):
+        got.append((seq, str(evt.get("text") or "")))
+        break
+    assert got == [(2, "乙")]

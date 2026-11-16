@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db import close_db, init_db
 from app.llm.client import MockLLMClient, set_llm_client
 from app.main import create_app
-from app.models import AsyncTask, Novel, Outline, OutlineItem
+from app.models import AsyncTask, Chapter, Novel, Outline, OutlineItem
 from app.services.generation import stream_generate_chapter
 from app.services.tasks import fail_interrupted_tasks
 import app.db as db_mod
@@ -165,4 +165,69 @@ async def test_fail_interrupted_tasks_marks_pending_and_running(client):
         assert statuses.count("completed") == 1
         failed = [t for t in rows if t.status == "failed"]
         assert all(t.error == "interrupted by restart" for t in failed)
+        assert all(t.message == "进程重启，任务已中断" for t in failed)
         assert by_id  # 行仍在
+
+
+@pytest.mark.asyncio
+async def test_restart_keeps_chapter_draft(client):
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel = Novel(title="草稿", genre="玄幻", status="generating", chapter_count=0)
+        session.add(novel)
+        await session.flush()
+        outline = Outline(
+            novel_id=novel.id, title="大纲", status="confirmed", start_from_chapter=1
+        )
+        session.add(outline)
+        await session.flush()
+        item = OutlineItem(
+            outline_id=outline.id,
+            order=1,
+            title="第一章",
+            summary="s",
+            key_points=["打戏"],
+            status="generating",
+        )
+        session.add(item)
+        await session.flush()
+        text = "叶凡已经写下第一段。"
+        chapter = Chapter(
+            novel_id=novel.id,
+            index=1,
+            title="第一章",
+            content=text,
+            char_count=len(text),
+            status="raw",
+            is_generated=True,
+            outline_item_id=item.id,
+        )
+        session.add(chapter)
+        task = AsyncTask(
+            novel_id=novel.id,
+            task_type="batch_generate",
+            status="running",
+            message="正在生成第 1 章",
+            result={"novel_id": novel.id, "items": []},
+        )
+        session.add(task)
+        await session.commit()
+        novel_id, item_id, chapter_id, task_id = novel.id, item.id, chapter.id, task.id
+        changed = await fail_interrupted_tasks(session)
+
+    assert changed == 3
+    async with db_mod.SessionLocal() as session:
+        saved = await session.get(Chapter, chapter_id)
+        assert saved is not None
+        assert saved.content == text
+        item = await session.get(OutlineItem, item_id)
+        assert item is not None and item.status == "pending"
+        novel = await session.get(Novel, novel_id)
+        assert novel is not None and novel.status == "ready"
+        task = await session.get(AsyncTask, task_id)
+        assert task is not None
+        assert task.status == "failed"
+        assert task.error == "interrupted by restart"
+        assert "留下" in (task.message or "")
+        assert task.result is not None
+        assert task.result["recoverable_draft"] is True

@@ -270,3 +270,29 @@ async def test_duplicate_ingest_rejected(client):
 
     release.set()
     await get_task_queue().wait_task(task_id, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_task_events_resume_after_cursor(client):
+    """已结束的任务会带事件序号并立刻收束，避免测试挂在长连接上。"""
+    task_id = await _add_task(
+        task_type="ingest", status="running", message="开始", progress=1
+    )
+    progress = get_task_queue().get_progress(task_id)
+    await progress.update(None, progress=15, message="一步", status="running")
+    first = progress.events_after(None)
+    assert first and first[0][1]["message"] == "一步"
+    cursor = first[0][0]
+    await progress.update(None, progress=100, message="二步", status="completed")
+    missed = progress.events_after(cursor)
+    assert any(payload.get("message") == "二步" for _seq, payload in missed)
+
+    async with client.stream(
+        "GET", f"/api/tasks/{task_id}/events", params={"after": cursor}
+    ) as resp:
+        assert resp.status_code == 200
+        body = await asyncio.wait_for(resp.aread(), timeout=5)
+    text = body.decode()
+    assert "id:" in text
+    assert "二步" in text
+    assert "completed" in text

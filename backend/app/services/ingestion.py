@@ -254,12 +254,14 @@ async def ingest_novel_handler(session: AsyncSession, task, progress: TaskProgre
     await _batch_embed_novel(session, novel, progress)
 
     # 卷摘要
+    progress.raise_if_cancelled()
     await progress.update(session, progress=92.0, message="生成卷级摘要")
-    await _build_volume_summaries(session, novel)
+    await _build_volume_summaries(session, novel, progress)
 
     # 文风样本
+    progress.raise_if_cancelled()
     await progress.update(session, progress=96.0, message="提取文风样本")
-    await _extract_style_samples(session, novel)
+    await _extract_style_samples(session, novel, progress)
 
     novel = await session.get(Novel, novel_id) or novel
     await refresh_original_chapter_stats(session, novel)
@@ -319,11 +321,20 @@ async def _batch_embed_novel(
         await session.commit()
         return
 
+    async def _report_embed(done_n: int, total_n: int) -> None:
+        pct = 78.0 + 12.0 * (done_n / max(total_n, 1))
+        await progress.update(
+            session,
+            progress=min(pct, 90.0),
+            message=f"向量化 {done_n}/{total_n} 章",
+        )
+
     written = await embed_and_store_batch(
         session,
         need_api,
         novel_id=novel.id,
         before_batch=progress.raise_if_cancelled,
+        on_batch=_report_embed,
     )
     for ch, _ in need_api:
         if ch.embedding_json:
@@ -385,7 +396,9 @@ async def _extract_chapter(session: AsyncSession, novel: Novel, ch: Chapter) -> 
         await bible_svc.merge_extraction(session, novel.id, data, chapter_index=ch.index)
 
 
-async def _build_volume_summaries(session: AsyncSession, novel: Novel) -> None:
+async def _build_volume_summaries(
+    session: AsyncSession, novel: Novel, progress: TaskProgress | None = None
+) -> None:
     chapters = (
         await session.execute(
             select(Chapter).where(Chapter.novel_id == novel.id).order_by(Chapter.index)
@@ -397,7 +410,15 @@ async def _build_volume_summaries(session: AsyncSession, novel: Novel) -> None:
         by_vol.setdefault(key, []).append(ch)
 
     client = get_llm_client()
-    for vol, chs in by_vol.items():
+    volumes = list(by_vol.items())
+    for index, (vol, chs) in enumerate(volumes, start=1):
+        if progress is not None:
+            progress.raise_if_cancelled()
+            await progress.update(
+                session,
+                progress=92.0 + index / max(len(volumes), 1) * 3.0,
+                message=f"卷摘要 {index}/{len(volumes)}",
+            )
         existing = (
             await session.execute(
                 select(Summary).where(
@@ -451,7 +472,11 @@ async def _build_volume_summaries(session: AsyncSession, novel: Novel) -> None:
     await session.commit()
 
 
-async def _extract_style_samples(session: AsyncSession, novel: Novel) -> None:
+async def _extract_style_samples(
+    session: AsyncSession, novel: Novel, progress: TaskProgress | None = None
+) -> None:
+    if progress is not None:
+        progress.raise_if_cancelled()
     existing = (
         await session.execute(select(StyleSample).where(StyleSample.novel_id == novel.id))
     ).scalars().all()

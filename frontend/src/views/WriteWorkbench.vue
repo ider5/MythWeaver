@@ -252,6 +252,7 @@ function itemStatusLabel(s: string) {
 
 function versionLabel(t: string) {
   if (t === 'generated') return '草稿'
+  if (t === 'segment') return '已写段'
   if (t === 'critic_revised') return 'Critic'
   if (t === 'user_edited') return '修订'
   return t
@@ -592,8 +593,24 @@ async function startGenerate() {
       return
     }
     if (data.event === 'ping') return
-    if (data.event === 'status') status.value = data.message || ''
+    if (data.event === 'status' || data.event === 'segment') {
+      status.value = data.message || status.value
+      if (data.chapter_id) chapterId.value = data.chapter_id
+      if (data.event === 'segment') return
+    }
     if (data.event === 'delta') stream.append(data.text || '')
+    if (data.event === 'error' && data.draft_saved) {
+      clearIdleWatch()
+      streaming.value = false
+      es?.close()
+      es = null
+      const note = data.message || '已写完的段落还在，可以接着改。'
+      if (selected.value) await loadChapterForItem(selected.value)
+      if (epoch !== streamEpoch) return
+      status.value = note
+      error.value = ''
+      return
+    }
     if (data.event === 'error') {
       const raw = data.message || '生成失败'
       const friendly =
@@ -630,14 +647,15 @@ async function startGenerate() {
     }
   }
   es.onerror = () => {
-    // EventSource 在服务端正常结束后也可能触发；仅在仍 streaming 时视为异常
-    if (streaming.value) {
-      stopStream('SSE 连接中断，请重试')
-    } else {
+    // 正常结束也会触发 error。还在写就交给浏览器按 Last-Event-ID 接上，不把断线当成失败。
+    if (!streaming.value) {
       clearIdleWatch()
       es?.close()
       es = null
+      return
     }
+    status.value = '连接断了，正在接上已写的内容'
+    armIdleWatch()
   }
 }
 
@@ -827,11 +845,16 @@ onMounted(() => {
   void load()
 })
 onActivated(() => {
+  if (streaming.value) {
+    armIdleWatch()
+    return
+  }
   // 切回续写：刷新大纲状态，但尽量保留当前编辑区内容
-  if (bootstrapped.value && !streaming.value) void load()
+  if (bootstrapped.value) void load()
 })
 onDeactivated(() => {
-  // KeepAlive：离开标签时不断开生成 SSE，避免误杀正在写的章；仅停修订进度订阅
+  // KeepAlive：离开标签时不断开生成 SSE。停掉空闲计时，避免后台误判超时。
+  clearIdleWatch()
   closeReviseEs()
 })
 onUnmounted(() => {

@@ -181,6 +181,78 @@ async def _upsert_generated_chapter(
     return chapter, ver, overwritten
 
 
+async def _persist_finished_segment(
+    session: AsyncSession,
+    *,
+    novel_id: int,
+    index: int,
+    title: str,
+    content: str,
+    outline_item_id: int,
+    segment_index: int,
+    segment_total: int,
+) -> tuple[Chapter, ChapterVersion]:
+    """一段写完就落库。后面的段失败或进程重启时，已写完的字还在。"""
+    existing = (
+        await session.execute(
+            select(Chapter).where(Chapter.novel_id == novel_id, Chapter.index == index)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        chapter = existing
+        chapter.title = title
+        chapter.content = content
+        chapter.char_count = count_chars(content)
+        chapter.status = "raw"
+        chapter.is_generated = True
+        chapter.outline_item_id = outline_item_id
+    else:
+        chapter = Chapter(
+            novel_id=novel_id,
+            index=index,
+            title=title,
+            content=content,
+            char_count=count_chars(content),
+            status="raw",
+            is_generated=True,
+            outline_item_id=outline_item_id,
+        )
+        session.add(chapter)
+        await session.flush()
+    ver = ChapterVersion(
+        chapter_id=chapter.id,
+        version_type="segment",
+        content=content,
+        consistency_report={
+            "partial": segment_index < segment_total,
+            "segment_index": segment_index,
+            "segment_total": segment_total,
+        },
+    )
+    session.add(ver)
+    await session.commit()
+    await session.refresh(chapter)
+    await session.refresh(ver)
+    return chapter, ver
+
+
+async def _drop_segment_checkpoints(session: AsyncSession, chapter_id: int) -> None:
+    """整章成功后去掉分段检查点，避免版本列表多出一截中间稿。"""
+    rows = (
+        await session.execute(
+            select(ChapterVersion).where(
+                ChapterVersion.chapter_id == chapter_id,
+                ChapterVersion.version_type == "segment",
+            )
+        )
+    ).scalars().all()
+    if not rows:
+        return
+    for row in rows:
+        await session.delete(row)
+    await session.commit()
+
+
 async def _reset_generating_status(
     session: AsyncSession,
     novel: Novel | None,
@@ -343,6 +415,25 @@ async def stream_generate_chapter(
                     else "模型未返回正文（流式结果为空）"
                 )
             parts.append(seg_text.strip())
+            partial = "\n\n".join(parts)
+            saved, _segment_ver = await _persist_finished_segment(
+                session,
+                novel_id=novel_id,
+                index=next_index,
+                title=item.title or f"第{next_index}章",
+                content=partial,
+                outline_item_id=item.id,
+                segment_index=seg.index,
+                segment_total=seg.total,
+            )
+            yield {
+                "event": "segment",
+                "message": f"第 {seg.index}/{seg.total} 段已写入章节",
+                "segment_index": seg.index,
+                "segment_total": seg.total,
+                "chapter_id": saved.id,
+                "chars": saved.char_count,
+            }
 
         content = "\n\n".join(parts)
 
@@ -430,6 +521,7 @@ async def stream_generate_chapter(
         novel.status = "ready"
         await _sync_scratch_volume(session, novel)
         await session.commit()
+        await _drop_segment_checkpoints(session, chapter.id)
 
         yield {
             "event": "done",

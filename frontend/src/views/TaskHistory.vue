@@ -3,6 +3,7 @@ import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watc
 import { useRoute } from 'vue-router'
 import { tasksApi, type Task } from '@/api'
 import ProgressBar from '@/components/ProgressBar.vue'
+import { watchTaskEvents } from '@/composables/useTaskEvents'
 
 defineOptions({ name: 'TaskHistory' })
 
@@ -15,33 +16,43 @@ const actionNote = ref('')
 const busyId = ref(0)
 const expandedId = ref<number | null>(null)
 const liveDetail = ref<Record<string, unknown> | null>(null)
+const linkState = ref<'live' | 'reconnecting' | 'off'>('off')
 let timer = 0
-let es: EventSource | null = null
+let stopLive: (() => void) | null = null
 
 function closeEs() {
-  es?.close()
-  es = null
+  stopLive?.()
+  stopLive = null
+  linkState.value = 'off'
+}
+
+function mergeTask(prev: Task | undefined, incoming: Task): Task {
+  if (!prev) return incoming
+  return {
+    ...prev,
+    ...incoming,
+    task_type: incoming.task_type || prev.task_type,
+    recoverable: incoming.recoverable ?? prev.recoverable,
+    created_at: incoming.created_at || prev.created_at,
+    result: incoming.result ?? prev.result,
+  }
 }
 
 function openEs(taskId: number) {
   closeEs()
   liveDetail.value = null
-  es = new EventSource(tasksApi.eventsUrl(taskId))
-  es.onmessage = (ev) => {
-    try {
-      const payload = JSON.parse(ev.data) as Task & Record<string, unknown>
+  linkState.value = 'live'
+  stopLive = watchTaskEvents(
+    taskId,
+    (payload) => {
       liveDetail.value = payload
-      upsert(payload as Task)
-      if (['completed', 'failed', 'cancelled'].includes(String(payload.status))) {
-        closeEs()
-      }
-    } catch {
-      /* ignore malformed */
-    }
-  }
-  es.onerror = () => {
-    /* 浏览器会自动重连；结束态由 onmessage 关闭 */
-  }
+      const prev = tasks.value.find((item) => item.id === payload.id)
+      upsert(mergeTask(prev, payload))
+    },
+    (state) => {
+      linkState.value = state
+    },
+  )
 }
 
 function toggleExpand(t: Task) {
@@ -144,6 +155,18 @@ function percent(t: Task) {
   const n = Number(t.progress)
   if (!Number.isFinite(n)) return 0
   return Math.round(Math.min(100, Math.max(0, n)))
+}
+
+function retryLabel(t: Task) {
+  if (t.status === 'cancelled') return '重新排队'
+  return '重试'
+}
+
+function retryHint(t: Task) {
+  if (t.recoverable && t.status === 'cancelled') return '这次已经取消。重新排队会再跑一遍。'
+  if (t.recoverable && t.status === 'failed') return '按原来的参数再排一次。'
+  if (t.status === 'failed') return '这次不能重试。'
+  return ''
 }
 
 function messageOf(t: Task) {
@@ -279,6 +302,9 @@ onUnmounted(() => {
     </header>
 
     <p v-if="actionError" class="alert alert--danger hub-alert" role="alert">{{ actionError }}</p>
+    <p v-else-if="linkState === 'reconnecting'" class="hub-reconnect" role="status">
+      进度连接断了，正在重连。
+    </p>
     <p v-else-if="actionNote" class="alert alert--ok hub-alert" role="status">{{ actionNote }}</p>
 
     <ul v-if="tasks.length" class="hub-list">
@@ -308,6 +334,7 @@ onUnmounted(() => {
             <span class="hub-pct" aria-hidden="true">{{ percent(t) }}%</span>
           </div>
           <p v-if="t.error && t.error !== t.message" class="hub-error" :title="t.error">{{ t.error }}</p>
+          <p v-if="retryHint(t)" class="hub-hint">{{ retryHint(t) }}</p>
           <div v-if="expandedId === t.id" class="hub-live" aria-live="polite">
             <p class="hub-live__title">实时详情 #{{ t.id }}</p>
             <p class="hub-live__line">
@@ -347,7 +374,7 @@ onUnmounted(() => {
             type="button"
             class="hub-act hub-act--retry"
             :disabled="busyId === t.id"
-            :aria-label="busyId === t.id ? `正在重试${typeLabel(t.task_type)}` : `重试${typeLabel(t.task_type)}`"
+            :aria-label="busyId === t.id ? `正在重试${typeLabel(t.task_type)}` : `${retryLabel(t)}${typeLabel(t.task_type)}`"
             @click="onRetry(t)"
           >
             <svg class="hub-act__icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -367,7 +394,7 @@ onUnmounted(() => {
                 stroke-linejoin="round"
               />
             </svg>
-            {{ busyId === t.id ? '重试中' : '重试' }}
+            {{ busyId === t.id ? '重试中' : retryLabel(t) }}
           </button>
           <span v-else-if="cancelling(t)" class="hub-wait">取消中</span>
         </div>
@@ -467,6 +494,19 @@ onUnmounted(() => {
 
 .hub-alert {
   margin: 0.85rem 1rem 0;
+}
+
+.hub-reconnect {
+  margin: 0.85rem 1rem 0;
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+
+.hub-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--ink-muted);
 }
 
 .hub-list {
