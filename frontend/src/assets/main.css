@@ -1799,6 +1799,67 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
+.wb-diff {
+  margin: 0 0.4rem 1.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  padding-top: 0.85rem;
+}
+
+.wb-diff__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.wb-diff__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.wb-diff__pick select {
+  min-width: 8.5rem;
+  padding: 0.25rem 0.4rem;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+}
+
+.wb-diff__body {
+  max-height: min(42vh, 22rem);
+  overflow: auto;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--panel) 92%, var(--ink) 8%);
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+}
+
+.wb-diff__line {
+  display: block;
+}
+
+.wb-diff__line--del {
+  color: color-mix(in srgb, #9b2c2c 70%, var(--ink));
+  background: color-mix(in srgb, #9b2c2c 12%, transparent);
+}
+
+.wb-diff__line--add {
+  color: color-mix(in srgb, #276749 75%, var(--ink));
+  background: color-mix(in srgb, #276749 12%, transparent);
+}
+
 .wb-write .prose-body,
 .wb-write .prose-edit {
   max-width: 38rem;
