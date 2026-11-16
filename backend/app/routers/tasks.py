@@ -105,7 +105,11 @@ async def task_events(task_id: int, session: AsyncSession = Depends(get_session)
         finally:
             progress.unsubscribe(queue)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    from app.utils.sse import SSE_HEADERS
+
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream", headers=SSE_HEADERS
+    )
 
 
 @router.get("/costs", response_model=CostSummaryOut)

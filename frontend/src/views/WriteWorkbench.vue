@@ -757,9 +757,7 @@ onActivated(() => {
   if (bootstrapped.value && !streaming.value) void load()
 })
 onDeactivated(() => {
-  // 离开标签时挂起 SSE，避免后台写错页；正文留在内存供返回
-  if (streaming.value) stopStream('已切换页面，生成连接已挂起；可返回后重新生成')
-  clearIdleWatch()
+  // KeepAlive：离开标签时不断开生成 SSE，避免误杀正在写的章；仅停修订进度订阅
   closeReviseEs()
 })
 onUnmounted(() => {

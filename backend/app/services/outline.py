@@ -162,10 +162,14 @@ async def enqueue_outline_generate(
     start_from_chapter: int | None = None,
 ) -> AsyncTask:
     """入队异步大纲生成，立即返回 task。"""
+    from app.services.novel_role import is_reference_role
+    from app.services.tasks import get_task_queue
+
     novel = await session.get(Novel, novel_id)
     if novel is None:
         raise ValueError("小说不存在")
-    from app.services.tasks import get_task_queue
+    if is_reference_role(novel.role):
+        raise ValueError("参考小说不能生成续写大纲")
 
     return await get_task_queue().enqueue(
         session,
