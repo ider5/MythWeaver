@@ -83,6 +83,11 @@
 {% else %}（本章开头，尚无已写正文）
 {% endif %}
 {% endif %}
+{% if stage_skills %}
+【已安装的正文写法】
+写的时候遵守。不要把这些说明抄进正文。
+{{ stage_skills }}
+{% endif %}
 
 {% if is_segment | default(false) %}
 请直接输出本段正文（{% if segment_index == 1 %}可用「{{ chapter_title }}」作为首行标题{% else %}不要重复章节标题，从情节接续写起{% endif %}）。

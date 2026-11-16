@@ -27,6 +27,17 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 - `POST /api/providers/profiles/{id}/update-from-current` → 用当前生效配置覆盖这条，不切换。
 - `DELETE /api/providers/profiles/{id}` → 删除。删掉正在用的那条后回到 `.env`。配置存在本机 SQLite。
 
+## 阶段写法
+
+只接受 SKILL.md 文本。frontmatter 仅 `name`、`description`、`stage`（`outline` | `draft` | `critic` | `revise`）。正文是提示词。安装前用预览接口看解析结果；预览不落库、不调用模型。服务端不执行脚本、不加载 YAML 对象、不读取同目录其他文件。启用后的提示词按字面量写入对应阶段：大纲 `outline.j2`、正文 `generation.j2`、审校 `consistency.j2`、修稿 `critic.j2`。正文里的 `{{ }}` 或 `{% %}` 不会被当成模板执行。
+
+- `GET /api/skills` → 已安装列表。`enabled` 为真且未超出该阶段篇幅时 `injected` 为真。
+- `GET /api/skills/catalog` → 内置示例的名称、说明和阶段，不含正文。
+- `POST /api/skills/preview` → `{ source }` 或 `{ catalog_id }`，二选一。返回 `{ ok, errors, name, description, stage, stage_label, body, already_installed }`。
+- `POST /api/skills` → 同样的来源，另加 `replace`。同名且未覆盖返回 409。超出阶段篇幅则保存但 `enabled=false`，并带 `warning`。非法文件返回 400，不落库。
+- `PATCH /api/skills/{id}` → `{ enabled }`。打开后会超出篇幅则 409。
+- `DELETE /api/skills/{id}` → `{ message, id }`。
+
 ## 小说
 
 | 方法 | 路径 | 说明 |

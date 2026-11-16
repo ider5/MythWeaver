@@ -7,6 +7,11 @@
 - 首行若已是章节标题可保留；正文叙述中不得再出现章号元指称，也不得新引入此类说法。
 
 {% include "anti_ai.j2" %}
+{% if stage_skills %}
+【已安装的修稿写法】
+改稿时遵守。只输出改后正文。
+{{ stage_skills }}
+{% endif %}
 
 问题清单：
 {% for issue in issues %}- [{{ issue.severity }}] {{ issue.type }}: {{ issue.message }}{% if issue.detail %}（{{ issue.detail }}）{% endif %}

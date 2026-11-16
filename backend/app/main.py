@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import generation, novels, outline, providers, story_bible, tasks
+from app.routers import generation, novels, outline, providers, skills, story_bible, tasks
 from app.schemas.health import HealthOut
 from app.services.health import collect_health
 from app.services.batch_generation import batch_generate_handler
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(generation.router)
     app.include_router(tasks.router)
     app.include_router(providers.router)
+    app.include_router(skills.router)
 
     @app.get("/api/health", response_model=HealthOut)
     async def health(

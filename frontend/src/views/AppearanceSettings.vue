@@ -35,6 +35,7 @@ const densities: { id: UiDensity; label: string; copy: string }[] = [
       <p class="page-desc">
         底色、强调色和疏密会立刻作用在整站，并只记在这台浏览器里。
         <RouterLink class="crumb" to="/settings/providers">模型连接在 LLM 设置。</RouterLink>
+        <RouterLink class="crumb" to="/settings/skills">阶段写法单独安装。</RouterLink>
       </p>
     </header>
 

@@ -22,6 +22,11 @@ const router = createRouter({
       component: () => import('@/views/AppearanceSettings.vue'),
     },
     {
+      path: '/settings/skills',
+      name: 'writing-skills',
+      component: () => import('@/views/WritingSkills.vue'),
+    },
+    {
       path: '/novels/:id/ingest/:taskId',
       name: 'ingest',
       component: () => import('@/views/IngestProgress.vue'),

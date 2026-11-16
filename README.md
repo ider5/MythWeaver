@@ -20,6 +20,7 @@
 - **一致性 Critic**：规则 + LLM，最多 2 轮自动修正，并给出问题报告。默认 **LangGraph**（`AGENT_RUNTIME=langgraph`），可回退 `legacy`。审阅页可勾选问题、预览修稿，确认后才写入。
 - **任务**：取消排队中或执行中的任务。失败或已取消、且可恢复的入库、大纲生成、修订入库可以重试。
 - **用量**：按阶段显示模型路由，并按用途汇总 token 与估算成本。
+- **阶段写法**：SKILL.md 只保存提示词，绑定大纲、正文、审校或修稿。安装前可以预览全文。不执行脚本，也不读取技能附带的文件。
 
 两条入口：
 
@@ -248,6 +249,7 @@ pytest
 - `POST` 与 `GET /api/novels/{id}/generate`（及 `/stream`），`POST .../generate/batch`
 - `GET /api/tasks`，`POST /api/tasks/{id}/cancel` 与 `/retry`，`GET /api/tasks/{id}/events`
 - `GET /api/costs`
+- `GET /api/skills`，`POST /api/skills/preview`，`POST /api/skills`
 
 ### 许可
 
@@ -273,6 +275,7 @@ The same page is also published as [README.en.md](README.en.md).
 - **Consistency critic**: rules plus an LLM, at most 2 automatic revise rounds, plus an issue report. **LangGraph** is the default (`AGENT_RUNTIME=langgraph`); `legacy` is the fallback. On the review step you select issues, preview a revision, and confirm before it is saved.
 - **Tasks**: cancel a queued or running task. Retry is available for failed or cancelled ingest, outline generation, and revise-commit when the task is recoverable.
 - **Usage**: stage model routes, plus token and estimated cost totals per purpose.
+- **Stage skills**: a SKILL.md stores prompt text only, bound to outline, draft, critic, or revise. The text is shown before install. Scripts are not executed, and files beside the skill are not read.
 
 Two ways in:
 
@@ -495,6 +498,7 @@ Entry points:
 - `POST` and `GET /api/novels/{id}/generate` (and `/stream`), `POST .../generate/batch`
 - `GET /api/tasks`, `POST /api/tasks/{id}/cancel` and `/retry`, `GET /api/tasks/{id}/events`
 - `GET /api/costs`
+- `GET /api/skills`, `POST /api/skills/preview`, `POST /api/skills`
 
 ### License
 
