@@ -43,11 +43,11 @@ Import asks for the role before the file:
 - **Manuscript**: continue this book. After ingest you can outline, write, and export.
 - **Reference**: extract style and structure only. It does not become continuable prose and cannot be exported as a book.
 
-Upload one `.txt` or `.md` file, or a folder of them. Preview the chapter split, edit title, author, and genre, then confirm. Confirm starts ingest. `/import?role=manuscript` or `reference` preselects the role.
+Upload one `.txt`, `.md`, or `.epub` file, or a folder of `.txt` / `.md`. An EPUB is split by its table of contents and chapter headings, and keeps volume names. Preview the chapter split, edit title, author, and genre, then confirm. Confirm starts ingest. `/import?role=manuscript` or `reference` preselects the role.
 
 ## Workbench
 
-Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**, **Tasks**. Opening Write on a reference only explains that it will not be continued, and links to the Bible.
+Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**, **Tasks**. Opening Write on a reference only explains that it will not be continued, and links to the Bible. Beside the title, export TXT, MD, or EPUB. With more than one chapter, choose the whole book, one volume, or one chapter first.
 
 **Outline** has three steps: plan, review and confirm, batch write.
 
@@ -68,7 +68,7 @@ Sections: **Bible**, **Outline**, **Write** (hidden for a reference), **Usage**,
 
 | `role` | Use |
 |---|---|
-| `manuscript` | Source you can continue. Ingest, outline, write, and export as txt/md. The list defaults to this role. |
+| `manuscript` | Source you can continue. Ingest, outline, write, and export as txt/md/epub. The list defaults to this role. |
 | `reference` | A model to imitate. It is still ingested, and yields a Story Bible and style samples. It stays out of the default continuation list, cannot be a generation source, and cannot be exported as a book. Its chapters are not copied into a manuscript. |
 
 - `POST /api/novels`, `PATCH /api/novels/{id}`, and `POST /api/novels/import/confirm` accept `manuscript` or `reference`
