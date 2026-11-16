@@ -233,11 +233,11 @@ onUnmounted(() => closeEs())
   <section class="panel director">
     <div class="director__head">
       <div>
-        <div class="kicker">导演</div>
+        <div class="kicker">连写</div>
         <h2 class="director__title">连续生成</h2>
       </div>
       <p class="meta director__hint">
-        从已确认大纲的某一序起，按顺序写 N 章。Critic 未通过、生成失败或停止时，下一章不再写。正在写的这一章会写完。
+        从已确认大纲的某一条开始，按顺序写几章。检查没过、生成失败，或你点了停止，下一章就不再写。正在写的这一章会写完。
       </p>
     </div>
 
@@ -252,7 +252,7 @@ onUnmounted(() => closeEs())
       </label>
       <label class="check">
         <input v-model="runCritic" type="checkbox" :disabled="running" />
-        <span>生成后做 Critic</span>
+        <span>写完检查前后文</span>
       </label>
       <button class="btn" :disabled="!canStart" @click="start">
         {{ running ? '生成中…' : `连续生成 ${chapterCount} 章` }}

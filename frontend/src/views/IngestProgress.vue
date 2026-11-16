@@ -66,7 +66,7 @@ function statusTone(s?: string, failed?: boolean) {
   <div class="max-w-xl mx-auto panel p-8">
     <div class="kicker mb-2">入库</div>
     <h1 class="page-title text-2xl mb-1">入库进度</h1>
-    <p class="page-desc mb-6">摘要 → 实体抽取 → 向量化，可断点续传</p>
+    <p class="page-desc mb-6">先做摘要，再抽人物和设定，最后做向量。中断了可以接着跑。</p>
 
     <div class="progress-hero mb-4 tabular">{{ Math.round(task?.progress || 0) }}%</div>
     <ProgressBar :value="task?.progress || 0" :failed="!!error" />

@@ -160,7 +160,7 @@ def test_generation_prompt_includes_blueprint_fields():
     assert "冲突与转折：傀儡拦路" in text
     assert "悬念钩子：背面是苏婉" in text
     assert "出场人物：叶凡、苏婉" in text
-    assert "落实以上蓝图" in text
+    assert "章末停在悬念上" in text
 
 
 def test_generation_prompt_omits_empty_blueprint():
@@ -184,7 +184,7 @@ def test_generation_prompt_omits_empty_blueprint():
         chapter_characters=[],
     )
     assert "主角小目标：" not in text
-    assert "落实以上蓝图" not in text
+    assert "章末停在悬念上" not in text
     assert "概要：试炼" in text
 
 

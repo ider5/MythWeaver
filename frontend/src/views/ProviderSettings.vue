@@ -75,9 +75,9 @@ async function runTest() {
 <template>
   <div class="space-y-5 max-w-2xl">
     <div>
-      <h1 class="text-xl font-semibold tracking-tight">LLM 厂商预设</h1>
+      <h1 class="text-xl font-semibold tracking-tight">模型设置</h1>
       <p class="mt-1 text-sm text-[var(--ink-muted)]">
-        选择常见 OpenAI 兼容厂商，一键填入 Base URL 与默认模型，并可探测连通性。密钥仅用于本次测试，不会写入服务器。
+        选一个 OpenAI 兼容厂商，填上地址和模型，再测能不能连上。密钥只用于这次测试，不会存到服务器。
         <RouterLink class="crumb" to="/settings/appearance">界面外观在这里调整。</RouterLink>
       </p>
     </div>
@@ -158,9 +158,9 @@ async function runTest() {
 
     <div v-if="stageRoutes.length" class="panel p-5 space-y-3">
       <div>
-        <div class="font-medium">当前阶段路由</div>
+        <div class="font-medium">各阶段用的模型</div>
         <p class="mt-1 text-sm text-[var(--ink-muted)]">
-          摘要 / Critic 走 summary_*，大纲与续写走 generation_*，向量走 embedding_*（.env）。
+          摘要和审校用 summary_*，大纲和续写用 generation_*，向量用 embedding_*。都写在 .env 里。
         </p>
       </div>
       <ul class="text-sm space-y-2">

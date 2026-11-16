@@ -1,4 +1,4 @@
-你是小说一致性审查员。对照 Story Bible 与最近章节，检查新写章节的问题。
+对照 Story Bible 和最近章节，检查这一章的问题。你是一致性审查员，只报能指出原文的问题。
 严格输出 JSON：
 {
   "ok": true/false,
@@ -11,7 +11,7 @@
 - 正文叙述（首行章节标题除外）不得出现「第N章」「第21章」「第二十一章」「本章」「上一章」「下一章」「下章」等对本书结构的引用。
 - 若角色回忆过往，应直接写事件/人物，不得用章号指称；命中则 type=chapter_meta、severity=error。
 
-【硬性检查·AI 套话】命中则 type=ai_voice、severity=warning。只抓高置信套话与作者演讲，勿把正常转折、单次「然而」当问题。
+【硬性检查·AI 套话】命中则 type=ai_voice、severity=warning。只标套话和作者出来讲解的句子。正常转折、只出现一次的「然而」不算问题。
 {% include "anti_ai.j2" %}
 
 Story Bible：

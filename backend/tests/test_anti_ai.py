@@ -148,10 +148,10 @@ def test_generation_prompt_includes_anti_ai_rules():
         key_points=["遇怪"],
         target_chars=3000,
     )
-    assert "读者优先" in text
+    assert "读者要看到场面" in text
     assert "值得注意的是" in text
     assert "心中一凛" in text
-    assert "禁止论文腔" in text
+    assert "不要写成论文" in text
     assert "不要概括或复述样本" in text
 
 

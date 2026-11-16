@@ -24,7 +24,7 @@ VENDOR_PRESETS: list[dict[str, Any]] = [
         "default_model": "deepseek-chat",
         "models": ["deepseek-chat", "deepseek-reasoner"],
         "docs_url": "https://api-docs.deepseek.com/",
-        "notes": "OpenAI 兼容；适合中文长文。",
+        "notes": "OpenAI 兼容接口。",
     },
     {
         "id": "moonshot",
