@@ -17,6 +17,7 @@ A single-machine workbench for continuing web novels. Layered summaries, vector 
 - **Consistency critic**: rules plus an LLM, at most 2 automatic revise rounds, plus an issue report. **LangGraph** is the default (`AGENT_RUNTIME=langgraph`); `legacy` is the fallback. On the review step you select issues, preview a revision, and confirm before it is saved.
 - **Tasks**: cancel a queued or running task. Retry is available for failed or cancelled ingest, outline generation, and revise-commit when the task is recoverable.
 - **Usage**: stage model routes, plus token and estimated cost totals per purpose.
+- **Stage skills**: a SKILL.md stores prompt text only, bound to outline, draft, critic, or revise. The text is shown before install. Scripts are not executed, and files beside the skill are not read.
 
 Two ways in:
 
@@ -239,6 +240,7 @@ Entry points:
 - `POST` and `GET /api/novels/{id}/generate` (and `/stream`), `POST .../generate/batch`
 - `GET /api/tasks`, `POST /api/tasks/{id}/cancel` and `/retry`, `GET /api/tasks/{id}/events`
 - `GET /api/costs`
+- `GET /api/skills`, `POST /api/skills/preview`, `POST /api/skills`
 
 ## License
 

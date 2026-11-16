@@ -19,6 +19,11 @@ Story Bible：
 
 最近章节衔接参考：
 {{ recent_tail }}
+{% if stage_skills %}
+【已安装的审校写法】
+在原有检查之外，把违反下列要求、且能指出原文的问题写入 issues。仍然只输出 JSON。
+{{ stage_skills }}
+{% endif %}
 
 新章节：
 {{ content }}

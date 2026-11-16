@@ -22,6 +22,13 @@ const home = computed(() => route.name === 'home')
           <RouterLink to="/settings/providers" class="nav-link">LLM 设置</RouterLink>
         </nav>
         <RouterLink
+          to="/settings/skills"
+          class="header-tool"
+          :aria-current="route.path.startsWith('/settings/skills') ? 'page' : undefined"
+        >
+          写法
+        </RouterLink>
+        <RouterLink
           to="/settings/health"
           class="header-tool"
           :aria-current="route.path.startsWith('/settings/health') ? 'page' : undefined"

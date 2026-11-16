@@ -14,6 +14,7 @@ from app.models.entities import (
     StyleSample,
     Summary,
     WorldSetting,
+    WritingSkill,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "LLMProfile",
     "RecurrentMemory",
     "StyleSample",
+    "WritingSkill",
 ]

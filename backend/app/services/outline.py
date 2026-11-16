@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.llm.client import get_llm_client
 from app.llm.cost_tracker import log_cost
 from app.llm.prompts import render
+from app.services.writing_skills import stage_skill_text
 from app.models import AsyncTask, Chapter, Novel, Outline, OutlineItem, RecurrentMemory, Summary
 from app.services import story_bible as bible_svc
 from app.services.scratch import is_scratch_origin
@@ -263,6 +264,7 @@ async def generate_outline(
         start_from_chapter=start,
         start_from_chinese=int_to_chinese(start),
         existing_chapter_count=existing_count,
+        stage_skills=await stage_skill_text(session, "outline"),
     )
 
     # LLM 期间不得持有未提交写锁，否则进度独立连接 UPDATE 会死锁/locked

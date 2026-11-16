@@ -563,3 +563,56 @@ export const providersApi = {
     model?: string | null
   }) => api.post<ConnectionTestResult>('/providers/test', body),
 }
+
+export type WritingSkillStage = 'outline' | 'draft' | 'critic' | 'revise'
+
+export interface WritingSkill {
+  id: number
+  name: string
+  description: string
+  stage: WritingSkillStage
+  stage_label: string
+  body: string
+  enabled: boolean
+  injected: boolean
+  origin: string
+  catalog_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface WritingSkillCatalogItem {
+  catalog_id: string
+  name: string
+  description: string
+  stage: WritingSkillStage
+  stage_label: string
+  installed: boolean
+}
+
+export interface SkillPreview {
+  ok: boolean
+  errors: string[]
+  name?: string | null
+  description?: string | null
+  stage?: WritingSkillStage | null
+  stage_label?: string | null
+  body?: string | null
+  catalog_id?: string | null
+  already_installed: boolean
+}
+
+export interface SkillInstallResult extends WritingSkill {
+  warning?: string | null
+}
+
+export const skillsApi = {
+  list: () => api.get<WritingSkill[]>('/skills'),
+  catalog: () => api.get<WritingSkillCatalogItem[]>('/skills/catalog'),
+  preview: (body: { source?: string; catalog_id?: string }) =>
+    api.post<SkillPreview>('/skills/preview', body),
+  install: (body: { source?: string; catalog_id?: string; replace?: boolean }) =>
+    api.post<SkillInstallResult>('/skills', body),
+  update: (id: number, body: { enabled: boolean }) => api.patch<WritingSkill>(`/skills/${id}`, body),
+  remove: (id: number) => api.delete<{ message: string; id: number }>(`/skills/${id}`),
+}

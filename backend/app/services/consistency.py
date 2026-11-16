@@ -15,6 +15,7 @@ from app.models import Novel
 from app.schemas.generation import ConsistencyIssue, ConsistencyReport
 from app.services import story_bible as bible_svc
 from app.services.chapter_length import sample_content_for_critic
+from app.services.writing_skills import stage_skill_text
 from app.utils.chinese_text import count_chars
 from app.utils.json_extract import extract_json
 
@@ -208,6 +209,7 @@ async def check_consistency(
         story_bible=bible_text or "（空）",
         recent_tail=recent_tail[-2000:] if recent_tail else "（无）",
         content=llm_body[:10000],
+        stage_skills=await stage_skill_text(session, "critic"),
     )
     result = await client.chat(
         [{"role": "user", "content": prompt}],
@@ -292,6 +294,7 @@ async def critic_revise(
         issues=[i.model_dump() for i in report.issues],
         story_bible=bible_text,
         content=content,
+        stage_skills=await stage_skill_text(session, "revise"),
     )
     client = get_llm_client()
     result = await client.chat(

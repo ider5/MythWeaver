@@ -26,6 +26,7 @@ from app.services.chapter_length import (
 )
 from app.services.ingestion import incremental_update_chapter
 from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
+from app.services.writing_skills import stage_skill_text
 from app.services.scratch import is_scratch_origin
 from app.services.retrieval import delete_chapter_embedding
 from app.utils.chinese_text import count_chars
@@ -340,6 +341,7 @@ async def stream_generate_chapter(
         usage_out = 0
         usage_provider = ""
         usage_model = ""
+        draft_skills = await stage_skill_text(session, "draft")
 
         for seg in segments:
             if segmented:
@@ -376,6 +378,7 @@ async def stream_generate_chapter(
                 segment_key_points=seg.key_points,
                 written_tail=ending_slice(written, 2000),
                 is_last_segment=seg.is_last,
+                stage_skills=draft_skills,
             )
             if segmented:
                 max_tokens = estimate_generation_max_tokens(
