@@ -649,6 +649,74 @@ async def test_restore_blank_scratch_and_title_override(client):
 
 
 @pytest.mark.asyncio
+async def test_restore_clears_generating_outline_item(client):
+    """备份可以发生在生成中途。新书的大纲条目不能继续卡在 generating。"""
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel = Novel(title="写到一半", genre="玄幻", status="generating", chapter_count=1)
+        session.add(novel)
+        await session.flush()
+        outline = Outline(
+            novel_id=novel.id, title="大纲", status="confirmed", start_from_chapter=1
+        )
+        session.add(outline)
+        await session.flush()
+        item = OutlineItem(
+            outline_id=outline.id,
+            order=1,
+            title="第一章",
+            summary="s",
+            key_points=[],
+            status="generating",
+        )
+        session.add(item)
+        await session.flush()
+        session.add(
+            Chapter(
+                novel_id=novel.id,
+                index=1,
+                title="第一章",
+                content="已写一段",
+                char_count=4,
+                status="raw",
+                is_generated=True,
+                outline_item_id=item.id,
+            )
+        )
+        await session.commit()
+        novel_id = novel.id
+
+    payload = (await client.get(f"/api/novels/{novel_id}/backup")).content
+    _manifest, tables = _unzip(payload)
+    assert tables["rows/novels.json"][0]["status"] == "generating"
+    assert tables["rows/outline_items.json"][0]["status"] == "generating"
+
+    restored = await _restore(client, payload)
+    assert restored.status_code == 200
+    body = restored.json()
+    assert body["status"] == "ready"
+    copy_id = body["id"]
+
+    async with db_mod.SessionLocal() as session:
+        original = await session.get(Novel, novel_id)
+        assert original is not None and original.status == "generating"
+        original_item = await session.scalar(
+            select(OutlineItem)
+            .join(Outline, OutlineItem.outline_id == Outline.id)
+            .where(Outline.novel_id == novel_id)
+        )
+        assert original_item is not None and original_item.status == "generating"
+        copied = await session.scalar(
+            select(OutlineItem)
+            .join(Outline, OutlineItem.outline_id == Outline.id)
+            .where(Outline.novel_id == copy_id)
+        )
+        assert copied is not None and copied.status == "pending"
+        copied_chapter = await session.scalar(select(Chapter).where(Chapter.novel_id == copy_id))
+        assert copied_chapter is not None and copied_chapter.content == "已写一段"
+
+
+@pytest.mark.asyncio
 async def test_backup_missing_novel(client):
     response = await client.get("/api/novels/99999/backup")
     assert response.status_code == 404

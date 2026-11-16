@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -231,3 +233,124 @@ async def test_restart_keeps_chapter_draft(client):
         assert "留下" in (task.message or "")
         assert task.result is not None
         assert task.result["recoverable_draft"] is True
+
+
+async def _seed_items(session, *, count: int = 1) -> tuple[int, list[int]]:
+    novel = Novel(title="并行", genre="玄幻", status="ready", chapter_count=0)
+    session.add(novel)
+    await session.flush()
+    outline = Outline(
+        novel_id=novel.id, title="大纲", status="confirmed", start_from_chapter=1
+    )
+    session.add(outline)
+    await session.flush()
+    item_ids: list[int] = []
+    for order in range(1, count + 1):
+        item = OutlineItem(
+            outline_id=outline.id,
+            order=order,
+            title=f"第{order}章",
+            summary="s",
+            key_points=["打戏"],
+            status="pending",
+        )
+        session.add(item)
+        await session.flush()
+        item_ids.append(item.id)
+    await session.commit()
+    return novel.id, item_ids
+
+
+async def _collect(novel_id: int, item_id: int) -> list[dict]:
+    assert db_mod.SessionLocal is not None
+    events: list[dict] = []
+    async with db_mod.SessionLocal() as session:
+        async for ev in stream_generate_chapter(
+            session, novel_id, item_id, run_critic=False, max_critic_rounds=0
+        ):
+            events.append(ev)
+    return events
+
+
+@pytest.mark.asyncio
+async def test_concurrent_generation_allows_only_one(client):
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, item_ids = await _seed_items(session, count=2)
+
+    gate = MockLLMClient(stream_text="叶凡拔剑。", embed_dim=8, smart=True)
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    original_stream = gate.stream
+
+    async def gated_stream(*args, **kwargs):
+        started.set()
+        await release.wait()
+        async for chunk in original_stream(*args, **kwargs):
+            yield chunk
+
+    gate.stream = gated_stream  # type: ignore[method-assign]
+    set_llm_client(gate)
+
+    first = asyncio.create_task(_collect(novel_id, item_ids[0]))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    async with db_mod.SessionLocal() as session:
+        visible = await session.get(Novel, novel_id)
+        assert visible is not None and visible.status == "generating"
+
+    second = asyncio.create_task(_collect(novel_id, item_ids[1]))
+    # 必须在第一路还占着 generating 时就被拒绝，不能排到它写完再开始。
+    second_events = await asyncio.wait_for(second, timeout=3)
+    release.set()
+    first_events = await asyncio.wait_for(first, timeout=10)
+
+    assert any(ev.get("event") == "done" for ev in first_events)
+    assert any(ev.get("message") == "已有生成进行中，请结束后再试" for ev in second_events)
+    assert not any(ev.get("event") == "done" for ev in second_events)
+
+    async with db_mod.SessionLocal() as session:
+        novel = await session.get(Novel, novel_id)
+        assert novel is not None and novel.status == "ready"
+        winner = await session.get(OutlineItem, item_ids[0])
+        loser = await session.get(OutlineItem, item_ids[1])
+        assert winner is not None and winner.status == "done"
+        assert loser is not None and loser.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_failed_generation_reset_does_not_clobber_next_claim(client):
+    """错误事件交给调用方时，状态已经放开；调用方随后占用的锁不能被清掉。"""
+    assert db_mod.SessionLocal is not None
+    async with db_mod.SessionLocal() as session:
+        novel_id, item_ids = await _seed_items(session, count=1)
+    item_id = item_ids[0]
+    set_llm_client(
+        MockLLMClient(stream_text="叶凡。", embed_dim=8, smart=True, stream_error="模型崩了")
+    )
+
+    saw_error = False
+    async with db_mod.SessionLocal() as session:
+        async for ev in stream_generate_chapter(
+            session, novel_id, item_id, run_critic=False, max_critic_rounds=0
+        ):
+            if ev.get("event") != "error":
+                continue
+            saw_error = True
+            assert "模型崩了" in str(ev.get("message") or "")
+            async with db_mod.SessionLocal() as other:
+                novel = await other.get(Novel, novel_id)
+                item = await other.get(OutlineItem, item_id)
+                assert novel is not None and item is not None
+                assert novel.status != "generating"
+                assert item.status != "generating"
+                novel.status = "generating"
+                item.status = "generating"
+                await other.commit()
+
+    assert saw_error
+    async with db_mod.SessionLocal() as session:
+        novel = await session.get(Novel, novel_id)
+        item = await session.get(OutlineItem, item_id)
+        assert novel is not None and novel.status == "generating"
+        assert item is not None and item.status == "generating"
