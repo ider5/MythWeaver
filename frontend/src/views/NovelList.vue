@@ -100,65 +100,69 @@ onMounted(load)
 <template>
   <div class="home">
     <section class="home-hero" aria-labelledby="home-brand">
-      <p id="home-brand" class="home-brand">MythWeaver</p>
-      <h1 class="home-headline">从零开书，或把长篇接着写</h1>
-      <span class="home-rule" aria-hidden="true"></span>
-      <p class="home-lede">开书只要前提和文风。续写仍从导入原稿开始。两条路径分开。</p>
-      <div class="home-cta path-grid">
-        <button class="path-card" type="button" @click="router.push('/create')">
-          <span class="path-card__kicker">开书</span>
-          <span class="path-card__title">从一句前提写起</span>
-          <span class="path-card__copy">设定、大纲、开篇。不需要原稿。</span>
-        </button>
-        <button class="path-card path-card--alt" type="button" @click="router.push('/import')">
-          <span class="path-card__kicker">续写</span>
-          <span class="path-card__title">把已有原文接下去</span>
-          <span class="path-card__copy">导入、入库、大纲，再流式续写。</span>
-        </button>
+      <div class="home-copy">
+        <p id="home-brand" class="home-brand">MythWeaver</p>
+        <div class="home-follow">
+          <h1 class="home-headline">从零开书，或接着写长篇</h1>
+          <p class="home-lede">开书从前提和文风开始。续写从导入原稿开始。</p>
+          <div class="home-cta">
+            <button class="home-go" type="button" @click="router.push('/create')">
+              开书
+              <span class="home-go__mark" aria-hidden="true"></span>
+            </button>
+            <button class="home-go home-go--quiet" type="button" @click="router.push('/import')">
+              续写
+              <span class="home-go__mark" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
       </div>
-      <p v-if="manuscriptNovels.length" class="home-resume">
-        <button class="btn-ghost btn-sm" type="button" @click="openNovel(manuscriptNovels[0])">
-          打开最近一本书
-        </button>
-      </p>
+      <div class="home-stage" aria-hidden="true">
+        <p class="home-stage__lead">城门关上以后，雨才真正落下来。</p>
+        <p class="home-stage__prose">巷口的灯只剩一盏。名册合上时，纸边还是潮的。</p>
+      </div>
     </section>
 
     <section class="home-shelf" aria-labelledby="shelf-title">
       <div class="home-shelf__head">
         <h2 id="shelf-title" class="home-shelf__title">作品</h2>
-        <div class="home-shelf__actions">
-          <button class="btn-ghost btn-sm" type="button" @click="router.push('/create')">开书</button>
-          <button class="btn-ghost btn-sm" type="button" @click="router.push('/import')">续写</button>
-        </div>
+        <button
+          v-if="manuscriptNovels.length"
+          class="home-resume"
+          type="button"
+          @click="openNovel(manuscriptNovels[0])"
+        >
+          打开最近一本
+        </button>
       </div>
 
-      <div class="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="按用途筛选">
+      <div class="home-filter" role="tablist" aria-label="按用途筛选">
         <button
-          class="chip"
+          class="home-filter__tab"
           type="button"
           role="tab"
           :aria-selected="filter === 'manuscript'"
-          :class="filter === 'manuscript' && 'chip--active'"
+          :class="filter === 'manuscript' && 'is-on'"
           @click="filter = 'manuscript'"
         >
           原稿 {{ manuscriptCount }}
         </button>
         <button
-          class="chip"
+          class="home-filter__tab"
           type="button"
           role="tab"
           :aria-selected="filter === 'reference'"
-          :class="filter === 'reference' && 'chip--active'"
+          :class="filter === 'reference' && 'is-on'"
           @click="filter = 'reference'"
         >
           参考 {{ referenceCount }}
         </button>
         <button
-          class="chip"
+          class="home-filter__tab"
           type="button"
           role="tab"
           :aria-selected="filter === 'all'"
-          :class="filter === 'all' && 'chip--active'"
+          :class="filter === 'all' && 'is-on'"
           @click="filter = 'all'"
         >
           全部
@@ -198,10 +202,9 @@ onMounted(load)
 
       <ul v-else :key="filter" class="space-y-3">
         <li
-          v-for="(n, index) in visible"
+          v-for="n in visible"
           :key="n.id"
           class="panel panel-hover home-row px-5 py-4 flex items-center justify-between gap-4 cursor-pointer"
-          :style="{ '--i': Math.min(index, 8) }"
           @click="openNovel(n)"
         >
           <div class="min-w-0">

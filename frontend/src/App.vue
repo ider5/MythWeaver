@@ -4,14 +4,15 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 const route = useRoute()
 const wide = computed(() => String(route.path).startsWith('/novels/'))
+const home = computed(() => route.name === 'home')
 </script>
 
 <template>
   <div class="min-h-screen">
-    <header class="app-header">
+    <header class="app-header" :class="{ 'app-header--home': home }">
       <RouterLink to="/" class="brand">
         <span class="brand-mark" aria-hidden="true">织</span>
-        MythWeaver
+        <span class="brand-name">MythWeaver</span>
       </RouterLink>
       <div class="header-tools">
         <nav class="app-nav">
@@ -29,7 +30,7 @@ const wide = computed(() => String(route.path).startsWith('/novels/'))
         </RouterLink>
       </div>
     </header>
-    <main class="app-main" :class="{ 'app-main--wide': wide }">
+    <main class="app-main" :class="{ 'app-main--wide': wide, 'app-main--home': home }">
       <RouterView v-slot="{ Component }">
         <KeepAlive :max="12">
           <component :is="Component" :key="route.path.split('/').slice(0, 3).join('/')" />
