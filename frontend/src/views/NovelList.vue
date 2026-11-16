@@ -180,6 +180,14 @@ function fmtNum(n: number) {
   return Number(n || 0).toLocaleString('zh-CN')
 }
 
+function closeSiblingMenus(event: Event) {
+  const current = event.currentTarget as HTMLDetailsElement | null
+  if (!current?.open) return
+  document.querySelectorAll('.home-shelf details[open]').forEach((node) => {
+    if (node !== current) (node as HTMLDetailsElement).open = false
+  })
+}
+
 let skipActivate = false
 onMounted(() => {
   skipActivate = true
@@ -360,7 +368,7 @@ onActivated(() => {
               <span v-if="n.author">{{ n.author }}</span>
             </div>
           </div>
-          <div class="flex flex-wrap gap-2 shrink-0 justify-end" @click.stop>
+          <div class="flex flex-wrap gap-2 shrink-0 justify-end items-center" @click.stop>
             <button
               :class="isReference(n) ? 'btn-ghost' : 'btn'"
               type="button"
@@ -385,7 +393,14 @@ onActivated(() => {
             >
               备份
             </button>
-            <button class="btn-danger" type="button" @click="remove(n)">删除</button>
+            <details class="quiet-menu quiet-menu--end" @toggle="closeSiblingMenus">
+              <summary class="quiet-menu__sum">更多</summary>
+              <div class="quiet-menu__panel">
+                <button class="quiet-menu__item quiet-menu__item--danger" type="button" @click="remove(n)">
+                  删除这本书
+                </button>
+              </div>
+            </details>
           </div>
         </li>
       </ul>
