@@ -114,6 +114,13 @@ pytest
 
 测试路径由 `backend/pytest.ini` 指定为 `tests/`。需要真实 API 的用例请自行配置 `.env`；默认以 mock / 本地逻辑为主。
 
+持续集成见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。推送到 `main` 或 `master`，以及针对这两个分支的 pull request，会并行执行：
+
+- 后端：Python 3.11，安装 `requirements.txt` 后运行 `pytest`（沿用测试内的 mock，不注入 API 密钥）
+- 前端：Node.js 20，`npm ci` 后执行 `npm run build`（含 `vue-tsc`）
+
+`sqlite-vec` 使用 PyPI wheel。GitHub 托管 runner 上由 `actions/setup-python` 提供的 CPython 可加载 SQLite 扩展，无需额外 apt 包。
+
 ## 文档
 
 - [架构说明](docs/ARCHITECTURE.md) — 模块划分、数据模型、生成回路
