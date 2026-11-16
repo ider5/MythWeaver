@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { configApi, providersApi, type ProviderPreset } from '@/api'
 
 const presets = ref<ProviderPreset[]>([])
@@ -77,6 +78,7 @@ async function runTest() {
       <h1 class="text-xl font-semibold tracking-tight">LLM 厂商预设</h1>
       <p class="mt-1 text-sm text-[var(--ink-muted)]">
         选择常见 OpenAI 兼容厂商，一键填入 Base URL 与默认模型，并可探测连通性。密钥仅用于本次测试，不会写入服务器。
+        <RouterLink class="crumb" to="/settings/appearance">界面外观在这里调整。</RouterLink>
       </p>
     </div>
 

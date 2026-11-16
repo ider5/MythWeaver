@@ -768,7 +768,7 @@ onUnmounted(() => {
         <li :class="{ 'is-current': writePhase === 3 && !committed, 'is-done': committed }">入库</li>
       </ol>
 
-      <header class="wb-stage__head">
+      <header :key="selected?.id ?? 0" class="wb-stage__head">
         <div class="min-w-0">
           <p v-if="selected" class="wb-kicker">
             <span v-if="chapterIndex">第 {{ chapterIndex }} 章</span>

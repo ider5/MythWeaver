@@ -11,6 +11,11 @@ const router = createRouter({
       component: () => import('@/views/ProviderSettings.vue'),
     },
     {
+      path: '/settings/appearance',
+      name: 'appearance',
+      component: () => import('@/views/AppearanceSettings.vue'),
+    },
+    {
       path: '/novels/:id/ingest/:taskId',
       name: 'ingest',
       component: () => import('@/views/IngestProgress.vue'),
