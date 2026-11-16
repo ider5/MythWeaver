@@ -1553,6 +1553,11 @@ a.home-go {
   box-shadow: none;
 }
 
+.home-row:has(details[open]) {
+  position: relative;
+  z-index: 5;
+}
+
 .ws-head {
   margin-bottom: 1.15rem;
   display: flex;
@@ -1851,7 +1856,7 @@ a.home-go {
   gap: 0.5rem;
 }
 
-.wb-tune,
+.wb-tune__fields,
 .wb-plan__fields,
 .wb-critic__tools,
 .wb-diff__actions {
@@ -1874,6 +1879,26 @@ a.home-go {
   margin: 0 0 0.45rem;
 }
 
+.wb-tune__sum {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.wb-tune__sum .meta {
+  margin-left: 0.65rem;
+  font-weight: 550;
+}
+
+.wb-tune[open] .wb-tune__sum {
+  color: var(--ink);
+}
+
+.wb-tune__fields {
+  margin-top: 0.7rem;
+}
+
 .wb-progress {
   display: grid;
   gap: 0.4rem;
@@ -1889,7 +1914,9 @@ a.home-go {
 }
 
 .wb-brief summary,
-.wb-more__sum {
+.wb-tune__sum,
+.wb-more__sum,
+.quiet-menu__sum {
   cursor: pointer;
 }
 
@@ -1926,6 +1953,94 @@ a.home-go {
 .wb-brief ol {
   margin: 0;
   padding-left: 1.1rem;
+}
+
+.quiet-menu {
+  position: relative;
+}
+
+.quiet-menu[open] {
+  z-index: 8;
+}
+
+.quiet-menu__sum {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  list-style: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.quiet-menu__sum::-webkit-details-marker {
+  display: none;
+}
+
+.quiet-menu[open] .quiet-menu__sum,
+.quiet-menu__sum:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
+  border-color: var(--line);
+}
+
+.quiet-menu__panel {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 12.5rem;
+  padding: 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.quiet-menu--end .quiet-menu__panel {
+  left: auto;
+  right: 0;
+}
+
+.quiet-menu__item {
+  display: flex;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.quiet-menu__item:hover:not(:disabled) {
+  background: var(--bg-deep);
+}
+
+.quiet-menu__item--danger {
+  color: var(--danger);
+}
+
+.quiet-menu__item--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.quiet-menu__item:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .wb-more {
@@ -1984,26 +2099,47 @@ a.home-go {
   display: flex;
   flex: 1;
   flex-wrap: wrap;
-  gap: 0.15rem 0.85rem;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
 }
 
 .wb-version {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
   margin: 0;
-  padding: 0.1rem 0;
+  padding: 0.18rem 0.55rem;
   color: var(--ink-muted);
   font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.3;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
   cursor: pointer;
 }
 
-.wb-version.is-active {
+.wb-version:hover:not(:disabled) {
   color: var(--ink);
-  border-bottom-color: var(--accent);
+  background: var(--bg-deep);
+}
+
+.wb-version.is-active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.wb-version__time {
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.wb-version.is-active .wb-version__time {
+  color: color-mix(in srgb, var(--accent) 72%, var(--ink));
 }
 
 .wb-version:disabled {
@@ -2351,6 +2487,9 @@ a.home-go {
 .wb-rail__item:focus-visible,
 .wb-version:focus-visible,
 .wb-more__sum:focus-visible,
+.quiet-menu__sum:focus-visible,
+.quiet-menu__item:focus-visible,
+.wb-tune__sum:focus-visible,
 .wb-brief summary:focus-visible,
 .wb-beat__title:focus-visible {
   outline: 2px solid var(--accent);

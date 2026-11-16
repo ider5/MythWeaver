@@ -205,6 +205,14 @@ const originalAvgChars = computed(() => {
 
 const willSegment = computed(() => Number(targetChars.value) > SEGMENT_HINT)
 
+const tuneSummary = computed(() => {
+  const n = Number(targetChars.value)
+  const length = Number.isFinite(n) && n > 0 ? `${Math.round(n)} 字` : '字数未设'
+  if (!runCritic.value) return `${length} · 不检验`
+  if (willSegment.value || Number(maxCriticRounds.value) === 0) return `${length} · 只审查`
+  return `${length} · ${maxCriticRounds.value} 轮`
+})
+
 const displayChars = computed(() => (streaming.value ? stream.length.value : content.value.length))
 
 const chapterIndex = computed(() => {
@@ -256,6 +264,42 @@ function versionLabel(t: string) {
   if (t === 'critic_revised') return 'Critic'
   if (t === 'user_edited') return '修订'
   return t
+}
+
+function versionTime(iso?: string | null) {
+  if (!iso) return ''
+  const raw = String(iso).trim()
+  if (!raw) return ''
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T')
+  const d = new Date(normalized)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const hm = new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(d)
+  if (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  ) {
+    return hm
+  }
+  const sameYear = d.getFullYear() === now.getFullYear()
+  const date = new Intl.DateTimeFormat(
+    'zh-CN',
+    sameYear
+      ? { month: 'numeric', day: 'numeric' }
+      : { year: 'numeric', month: 'numeric', day: 'numeric' },
+  ).format(d)
+  return `${date} ${hm}`
+}
+
+function versionStamp(v: { version_type?: string; created_at?: string | null }) {
+  const type = versionLabel(String(v?.version_type || ''))
+  const time = versionTime(v?.created_at)
+  return time ? `${type} · ${time}` : type
 }
 
 function versionById(id: number | null) {
@@ -781,7 +825,7 @@ function watchReviseTask(taskId: number) {
 
 function loadVersion(v: any) {
   applyVersion(v)
-  status.value = `已切换到版本 #${v.id}（${versionLabel(v.version_type)}）`
+  status.value = `已切换到${versionStamp(v)}`
 }
 
 async function deleteCurrentVersion() {
@@ -967,11 +1011,11 @@ onUnmounted(() => {
         >
           {{ revising ? '入库中…' : reviseFailed ? '重试入库' : '保存修订并入库' }}
         </button>
-        <details class="wb-more">
-          <summary class="wb-more__sum">删除</summary>
-          <div class="wb-more__panel">
+        <details class="quiet-menu">
+          <summary class="quiet-menu__sum">删除</summary>
+          <div class="quiet-menu__panel">
             <button
-              class="btn-danger btn-sm"
+              class="quiet-menu__item quiet-menu__item--danger"
               type="button"
               :disabled="!chapterId || activeVersionId == null || streaming || deleting || deletingChapter || reviseBusy"
               @click="deleteCurrentVersion"
@@ -979,10 +1023,10 @@ onUnmounted(() => {
               {{ deleting ? '删除中…' : '删除当前版本' }}
             </button>
             <button
-              class="btn-danger btn-sm"
+              class="quiet-menu__item quiet-menu__item--danger"
               type="button"
               :disabled="!chapterId || streaming || deleting || deletingChapter || reviseBusy"
-              title="危险：清除整章及全部版本"
+              title="清除整章及全部版本，大纲条目会保留"
               @click="deleteWholeChapter"
             >
               {{ deletingChapter ? '删除中…' : '删除整章及全部版本' }}
@@ -991,7 +1035,12 @@ onUnmounted(() => {
         </details>
       </div>
 
-      <div class="wb-tune">
+      <details class="wb-tune">
+        <summary class="wb-tune__sum">
+          篇幅与审阅
+          <span class="meta tabular">{{ tuneSummary }}</span>
+        </summary>
+        <div class="wb-tune__fields">
         <div>
           <label class="label" for="write-target-chars">本章目标字数</label>
           <input
@@ -1032,7 +1081,8 @@ onUnmounted(() => {
             <option :value="2">2</option>
           </select>
         </div>
-      </div>
+        </div>
+      </details>
 
       <div v-if="revising || reviseFailed || reviseProgress > 0" class="wb-progress">
         <div class="wb-progress__row">
@@ -1049,36 +1099,6 @@ onUnmounted(() => {
 
       <p v-if="error" class="alert alert--danger">{{ error }}</p>
 
-      <details v-if="selected && hasBrief" class="wb-brief">
-        <summary>本章要点</summary>
-        <dl>
-          <div v-if="selected.purpose">
-            <dt>目标</dt>
-            <dd>{{ selected.purpose }}</dd>
-          </div>
-          <div v-if="selected.conflict">
-            <dt>冲突</dt>
-            <dd>{{ selected.conflict }}</dd>
-          </div>
-          <div v-if="selected.suspense_hook">
-            <dt>悬念</dt>
-            <dd>{{ selected.suspense_hook }}</dd>
-          </div>
-          <div v-if="(selected.characters || []).length">
-            <dt>出场</dt>
-            <dd>{{ (selected.characters || []).join('、') }}</dd>
-          </div>
-          <div v-if="(selected.key_points || []).length">
-            <dt>要点</dt>
-            <dd>
-              <ol>
-                <li v-for="(point, i) in selected.key_points || []" :key="i">{{ point }}</li>
-              </ol>
-            </dd>
-          </div>
-        </dl>
-      </details>
-
       <div class="editor-frame wb-manuscript" :class="{ 'is-live': streaming }">
         <div class="editor-chrome">
           <span class="wb-manuscript__label">正文</span>
@@ -1090,10 +1110,16 @@ onUnmounted(() => {
               class="wb-version"
               :class="{ 'is-active': activeVersionId === v.id }"
               :aria-pressed="activeVersionId === v.id"
+              :title="`版本 #${v.id} ${versionStamp(v)}`"
               :disabled="reviseBusy"
               @click="loadVersion(v)"
             >
-              {{ versionLabel(v.version_type) }}
+              <span>{{ versionLabel(v.version_type) }}</span>
+              <time
+                v-if="versionTime(v.created_at)"
+                class="wb-version__time"
+                :datetime="v.created_at"
+              >{{ versionTime(v.created_at) }}</time>
             </button>
             <button
               v-if="versions.length >= 2"
@@ -1129,7 +1155,7 @@ onUnmounted(() => {
               左
               <select v-model.number="compareA">
                 <option v-for="v in versions" :key="`a-${v.id}`" :value="v.id">
-                  #{{ v.id }} {{ versionLabel(v.version_type) }}
+                  #{{ v.id }} {{ versionStamp(v) }}
                 </option>
               </select>
             </label>
@@ -1137,7 +1163,7 @@ onUnmounted(() => {
               右
               <select v-model.number="compareB">
                 <option v-for="v in versions" :key="`b-${v.id}`" :value="v.id">
-                  #{{ v.id }} {{ versionLabel(v.version_type) }}
+                  #{{ v.id }} {{ versionStamp(v) }}
                 </option>
               </select>
             </label>
@@ -1152,6 +1178,36 @@ onUnmounted(() => {
 </span></pre>
         </div>
       </div>
+
+      <details v-if="selected && hasBrief" class="wb-brief">
+        <summary>本章要点</summary>
+        <dl>
+          <div v-if="selected.purpose">
+            <dt>目标</dt>
+            <dd>{{ selected.purpose }}</dd>
+          </div>
+          <div v-if="selected.conflict">
+            <dt>冲突</dt>
+            <dd>{{ selected.conflict }}</dd>
+          </div>
+          <div v-if="selected.suspense_hook">
+            <dt>悬念</dt>
+            <dd>{{ selected.suspense_hook }}</dd>
+          </div>
+          <div v-if="(selected.characters || []).length">
+            <dt>出场</dt>
+            <dd>{{ (selected.characters || []).join('、') }}</dd>
+          </div>
+          <div v-if="(selected.key_points || []).length">
+            <dt>要点</dt>
+            <dd>
+              <ol>
+                <li v-for="(point, i) in selected.key_points || []" :key="i">{{ point }}</li>
+              </ol>
+            </dd>
+          </div>
+        </dl>
+      </details>
 
       <WritebackReview
         v-if="chapterId && !streaming"
