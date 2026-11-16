@@ -82,6 +82,7 @@ onMounted(load)
     <section class="home-hero" aria-labelledby="home-brand">
       <p id="home-brand" class="home-brand">MythWeaver</p>
       <h1 class="home-headline">长篇续写，压进一条清晰路径</h1>
+      <span class="home-rule" aria-hidden="true"></span>
       <p class="home-lede">导入原稿或参考，入库压缩后确认大纲，再流式续写。界面只留必要动作。</p>
       <div class="home-cta">
         <button class="btn" type="button" @click="router.push('/import')">导入续写</button>
@@ -170,11 +171,12 @@ onMounted(load)
         primary-to="/import?role=reference"
       />
 
-      <ul v-else class="space-y-3">
+      <ul v-else :key="filter" class="space-y-3">
         <li
-          v-for="n in visible"
+          v-for="(n, index) in visible"
           :key="n.id"
-          class="panel panel-hover cv-item home-row px-5 py-4 flex items-center justify-between gap-4 cursor-pointer"
+          class="panel panel-hover home-row px-5 py-4 flex items-center justify-between gap-4 cursor-pointer"
+          :style="{ '--i': Math.min(index, 8) }"
           @click="openNovel(n)"
         >
           <div class="min-w-0">

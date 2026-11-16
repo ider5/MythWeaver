@@ -301,6 +301,7 @@ onUnmounted(() => closeGenerateEs())
 
     <div class="wb-outline__layout">
       <section class="wb-sheet" aria-label="大纲蓝图">
+        <div :key="current?.id ?? 'empty'" class="wb-swap">
         <header v-if="current" class="wb-sheet__head">
           <div class="min-w-0">
             <label v-if="outlines.length > 1" class="wb-switch">
@@ -393,6 +394,7 @@ onUnmounted(() => closeGenerateEs())
         </ol>
         <div v-else class="empty-state">
           <p class="empty">尚未生成大纲。填好章数后生成第一份蓝图。</p>
+        </div>
         </div>
       </section>
 

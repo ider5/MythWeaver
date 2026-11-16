@@ -127,9 +127,11 @@ onUnmounted(() => {
       <RouterLink class="btn-ghost shrink-0" :to="`/novels/${id}/tasks`">查看进度</RouterLink>
     </div>
     <RouterView v-slot="{ Component }">
-      <KeepAlive :max="8">
-        <component :is="Component" />
-      </KeepAlive>
+      <Transition name="pane" mode="out-in">
+        <KeepAlive :max="8">
+          <component :is="Component" />
+        </KeepAlive>
+      </Transition>
     </RouterView>
   </div>
 </template>

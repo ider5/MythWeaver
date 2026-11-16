@@ -242,7 +242,7 @@ function edgeText(edge: LaidEdge) {
 }
 
 .rel-node.is-lead .rel-glyph {
-  fill: #f6f1e6;
+  fill: var(--on-accent);
 }
 
 .rel-node.is-rival circle {
