@@ -264,3 +264,32 @@ export const costsApi = {
 export const configApi = {
   get: () => api.get('/config'),
 }
+
+export interface ProviderPreset {
+  id: string
+  label: string
+  base_url: string
+  default_model: string
+  models: string[]
+  docs_url: string
+  notes: string
+}
+
+export interface ConnectionTestResult {
+  ok: boolean
+  error?: string | null
+  latency_ms?: number | null
+  reply?: string | null
+  base_url?: string | null
+  model?: string | null
+}
+
+export const providersApi = {
+  list: () => api.get<{ presets: ProviderPreset[] }>('/providers'),
+  test: (body: {
+    vendor_id?: string | null
+    api_key: string
+    base_url?: string | null
+    model?: string | null
+  }) => api.post<ConnectionTestResult>('/providers/test', body),
+}

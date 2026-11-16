@@ -10,6 +10,11 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 - `GET /api/config` → 模型与密钥是否配置（不返回明文 key）
 
+## LLM 厂商预设
+
+- `GET /api/providers` → `{ presets: [{ id, label, base_url, default_model, models, docs_url, notes }] }`
+- `POST /api/providers/test` → body `{ vendor_id?, api_key, base_url?, model? }`；响应 `{ ok, error?, latency_ms?, reply?, base_url?, model? }`。密钥仅用于本次探测，不落库。
+
 ## 小说
 
 | 方法 | 路径 | 说明 |

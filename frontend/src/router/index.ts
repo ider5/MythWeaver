@@ -6,6 +6,11 @@ const router = createRouter({
     { path: '/', name: 'home', component: () => import('@/views/NovelList.vue') },
     { path: '/import', name: 'import', component: () => import('@/views/ImportWizard.vue') },
     {
+      path: '/settings/providers',
+      name: 'provider-settings',
+      component: () => import('@/views/ProviderSettings.vue'),
+    },
+    {
       path: '/novels/:id/ingest/:taskId',
       name: 'ingest',
       component: () => import('@/views/IngestProgress.vue'),

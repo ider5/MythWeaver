@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import generation, novels, outline, story_bible, tasks
+from app.routers import generation, novels, outline, providers, story_bible, tasks
 from app.services.ingestion import ingest_novel_handler
 from app.services.generation import revise_commit_handler
 from app.services.outline import outline_generate_handler
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(outline.router)
     app.include_router(generation.router)
     app.include_router(tasks.router)
+    app.include_router(providers.router)
 
     @app.get("/api/health")
     async def health():
