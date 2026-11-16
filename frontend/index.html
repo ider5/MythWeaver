@@ -13,10 +13,12 @@
           var themes = { mist: 1, ink: 1 }
           var accents = { teal: 1, lagoon: 1, pine: 1, slate: 1 }
           var densities = { regular: 1, compact: 1 }
+          var locales = { zh: 'zh-CN', en: 'en' }
           var root = document.documentElement
           root.dataset.theme = themes[data.theme] ? data.theme : 'mist'
           root.dataset.accent = accents[data.accent] ? data.accent : 'teal'
           root.dataset.density = densities[data.density] ? data.density : 'regular'
+          if (locales[data.locale]) root.lang = locales[data.locale]
         } catch (e) {}
       })()
     </script>

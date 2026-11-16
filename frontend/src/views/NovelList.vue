@@ -5,6 +5,7 @@ import { novelsApi, type Novel } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import FirstRun from '@/components/FirstRun.vue'
 import { useHealth } from '@/composables/useHealth'
+import { useChromeCopy } from '@/lib/chromeCopy'
 
 const DISMISS_KEY = 'mythweaver.firstRun.dismissed'
 
@@ -23,6 +24,7 @@ const {
   error: healthError,
   load: loadHealth,
 } = useHealth()
+const copy = useChromeCopy()
 
 function readDismissed() {
   try {
@@ -212,11 +214,11 @@ onActivated(() => {
           <p class="home-lede">开书从前提和文风开始。续写从导入原稿开始。</p>
           <div class="home-cta">
             <button class="home-go" type="button" @click="router.push('/create')">
-              开书
+              {{ copy.homeStart }}
               <span class="home-go__mark" aria-hidden="true"></span>
             </button>
             <button class="home-go home-go--quiet" type="button" @click="router.push('/import')">
-              续写
+              {{ copy.homeContinue }}
               <span class="home-go__mark" aria-hidden="true"></span>
             </button>
           </div>
@@ -319,25 +321,25 @@ onActivated(() => {
         v-else-if="!novels.length"
         title="书架还是空的"
         body="可以从一句前提开书，也可以导入原文续写。两条路不会混在一起。"
-        primary="从零开书"
+        :primary="copy.emptyStart"
         primary-to="/create"
-        secondary="导入续写"
+        :secondary="copy.emptyImport"
         secondary-to="/import"
       />
       <EmptyState
         v-else-if="!visible.length && filter === 'manuscript'"
         title="这里还没有可写的书"
         body="开书和续写都出现在原稿里。参考小说只拆文风，不会出现在这里。"
-        primary="从零开书"
+        :primary="copy.emptyStart"
         primary-to="/create"
-        secondary="导入续写"
+        :secondary="copy.emptyImport"
         secondary-to="/import?role=manuscript"
       />
       <EmptyState
         v-else-if="!visible.length"
         title="还没有参考小说"
         body="导入时选「参考」，只拆结构与文风，不会变成可续写正文。"
-        primary="导入参考"
+        :primary="copy.emptyReference"
         primary-to="/import?role=reference"
       />
 

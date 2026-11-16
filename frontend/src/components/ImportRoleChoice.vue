@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useChromeCopy } from '@/lib/chromeCopy'
+
 defineProps<{ modelValue: 'manuscript' | 'reference' }>()
 const emit = defineEmits<{ 'update:modelValue': ['manuscript' | 'reference'] }>()
+const copy = useChromeCopy()
 </script>
 
 <template>
-  <div class="role-choice" role="radiogroup" aria-label="导入用途">
+  <div class="role-choice" role="radiogroup" :aria-label="copy.importGroup">
     <label class="role-choice__item" :class="{ 'is-on': modelValue === 'manuscript' }">
       <input
         class="sr-only"
@@ -14,9 +17,9 @@ const emit = defineEmits<{ 'update:modelValue': ['manuscript' | 'reference'] }>(
         :checked="modelValue === 'manuscript'"
         @change="emit('update:modelValue', 'manuscript')"
       />
-      <span class="role-choice__name">原稿</span>
-      <span class="role-choice__line">接着写这本书</span>
-      <span class="role-choice__note">入库后可大纲、续写，并导出成书。</span>
+      <span class="role-choice__name">{{ copy.importManuscript }}</span>
+      <span class="role-choice__line">{{ copy.importManuscriptLine }}</span>
+      <span class="role-choice__note">{{ copy.importManuscriptNote }}</span>
     </label>
     <label
       class="role-choice__item role-choice__item--ref"
@@ -30,9 +33,9 @@ const emit = defineEmits<{ 'update:modelValue': ['manuscript' | 'reference'] }>(
         :checked="modelValue === 'reference'"
         @change="emit('update:modelValue', 'reference')"
       />
-      <span class="role-choice__name">参考</span>
-      <span class="role-choice__line">只拆文风与结构</span>
-      <span class="role-choice__note">不会成为可续写正文，也不会导出成书。</span>
+      <span class="role-choice__name">{{ copy.importReference }}</span>
+      <span class="role-choice__line">{{ copy.importReferenceLine }}</span>
+      <span class="role-choice__note">{{ copy.importReferenceNote }}</span>
     </label>
   </div>
 </template>
