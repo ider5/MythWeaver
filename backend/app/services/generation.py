@@ -24,6 +24,7 @@ from app.services.chapter_length import (
     resolve_target_chars,
 )
 from app.services.ingestion import incremental_update_chapter
+from app.services.novel_role import REFERENCE_GENERATION_DETAIL, is_reference_role
 from app.services.retrieval import delete_chapter_embedding
 from app.utils.chinese_text import count_chars
 from app.utils.json_extract import extract_json
@@ -193,6 +194,10 @@ async def stream_generate_chapter(
     novel = await session.get(Novel, novel_id)
     if novel is None:
         yield {"event": "error", "message": "小说不存在"}
+        return
+    # 参考小说的章节不是续写来源，生成会把新正文写进参考本。
+    if is_reference_role(novel.role):
+        yield {"event": "error", "message": REFERENCE_GENERATION_DETAIL}
         return
     item = await session.get(OutlineItem, outline_item_id)
     if item is None:

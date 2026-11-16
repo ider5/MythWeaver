@@ -6,6 +6,7 @@ import { novelsApi, type ImportPreview } from '@/api'
 const router = useRouter()
 const step = ref<'upload' | 'preview'>('upload')
 const mode = ref<'file' | 'dir'>('file')
+const novelRole = ref<'manuscript' | 'reference'>('manuscript')
 const title = ref('')
 const author = ref('')
 const genre = ref('玄幻')
@@ -49,6 +50,7 @@ async function confirm() {
       title: title.value,
       author: author.value || undefined,
       genre: genre.value,
+      role: novelRole.value,
     })
     const { data: task } = await novelsApi.ingest(novel.id)
     router.push(`/novels/${novel.id}/ingest/${task.task_id}`)
@@ -64,7 +66,28 @@ async function confirm() {
   <div class="max-w-3xl">
     <div class="kicker mb-2">导入</div>
     <h1 class="page-title mb-1">导入向导</h1>
-    <p class="page-desc mb-5">支持单文件全文，或目录多文件分章导入；确认后自动入库。</p>
+    <p class="page-desc mb-5">先选用途，再上传。原稿进入续写；参考只拆文风，不会变成可续写正文。</p>
+
+    <div class="role-pick mb-4" role="radiogroup" aria-label="导入用途">
+      <label class="role-card" :class="novelRole === 'manuscript' && 'role-card--active'">
+        <input v-model="novelRole" class="sr-only" type="radio" name="novel-role" value="manuscript" />
+        <span class="role-card__mark">原稿</span>
+        <span class="role-card__title">续写这本书</span>
+        <span class="role-card__copy">入库后可大纲、续写，并导出成书。</span>
+      </label>
+      <label
+        class="role-card role-card--ref"
+        :class="novelRole === 'reference' && 'role-card--active'"
+      >
+        <input v-model="novelRole" class="sr-only" type="radio" name="novel-role" value="reference" />
+        <span class="role-card__mark">参考</span>
+        <span class="role-card__title">只拆文风与结构</span>
+        <span class="role-card__copy">不会成为可续写正文，也不会导出成书。</span>
+      </label>
+    </div>
+    <p v-if="novelRole === 'reference'" class="alert alert--ok mb-5">
+      参考本仍会入库，抽出 Story Bible 与文风。章节留在参考里，不进入默认续写。
+    </p>
 
     <ol class="steps" aria-label="导入步骤">
       <li class="steps__item" :class="step === 'upload' ? 'steps__item--active' : 'steps__item--done'">
@@ -148,7 +171,9 @@ async function confirm() {
 
       <div class="flex gap-3">
         <button class="btn-ghost" :disabled="busy" @click="step = 'upload'">返回</button>
-        <button class="btn" :disabled="busy" @click="confirm">确认并入库</button>
+        <button class="btn" :disabled="busy" @click="confirm">
+          {{ novelRole === 'reference' ? '作为参考入库' : '确认并入库' }}
+        </button>
       </div>
       <p v-if="error" class="alert alert--danger">{{ error }}</p>
     </div>

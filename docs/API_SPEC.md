@@ -19,18 +19,22 @@ Base URL：`http://localhost:8000`（前端开发代理 `/api`）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/novels` | 列表 |
-| GET | `/api/novels/{id}` | 详情 |
-| PATCH | `/api/novels/{id}` | 更新 |
+| GET | `/api/novels` | 列表。可选 `?role=manuscript` 或 `?role=reference`；不传则全部。续写默认来源用 `manuscript` |
+| POST | `/api/novels` | 创建。`role` 缺省 `manuscript` |
+| GET | `/api/novels/{id}` | 详情，含 `role` |
+| PATCH | `/api/novels/{id}` | 更新，可改 `role` |
 | DELETE | `/api/novels/{id}` | 删除 |
 | POST | `/api/novels/import/preview` | multipart：`file` 或 `files` + `title` |
-| POST | `/api/novels/import/confirm` | `{ import_token, title?, author?, genre? }` |
-| POST | `/api/novels/{id}/ingest` | 启动入库 → `{ task_id }` |
+| POST | `/api/novels/import/confirm` | `{ import_token, title?, author?, genre?, role? }`。`role`：`manuscript`（原稿，默认可续写导出）或 `reference`（参考，只拆文风与设定） |
+| POST | `/api/novels/{id}/ingest` | 启动入库 → `{ task_id }`。参考本同样可入库 |
+| GET | `/api/novels/{id}/export` | 导出 txt/md。参考本返回 409，不导出成书 |
 | GET | `/api/novels/{id}/chapters` | 章节列表（不含正文） |
 | GET | `/api/novels/{id}/chapters/{cid}` | 章节正文 |
 | GET | `/api/novels/{id}/chapters/{cid}/versions` | 版本链 |
 | POST | `/api/novels/{id}/chapters/{cid}/revise` | `{ content, commit_to_knowledge }` |
 | POST | `/api/novels/{id}/chapters/{cid}/critic-select-revise` | 按勾选问题修稿：`{ content, issues[], confirm?, commit_to_knowledge? }` → `{ base_content, revised_content, consistency, changed, version_id?, task_id? }`；`confirm=false` 仅预览不落库 |
+
+`role` 缺省为 `manuscript`。参考本可以抽取 Story Bible 与文风，但章节不作为续写来源：`POST /api/novels/{id}/generate` 返回 409；`GET .../generate/stream` 只发出 SSE `error`，不改状态、不写章节。
 
 ## Story Bible
 

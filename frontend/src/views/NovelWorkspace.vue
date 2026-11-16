@@ -7,13 +7,17 @@ const route = useRoute()
 const novel = ref<Novel | null>(null)
 const id = computed(() => Number(route.params.id))
 
-const tabs = [
+const allTabs = [
   { name: 'bible', label: '设定', path: 'bible' },
   { name: 'outline', label: '大纲', path: 'outline' },
   { name: 'write', label: '续写', path: 'write' },
   { name: 'costs', label: '用量', path: 'costs' },
   { name: 'tasks', label: '任务', path: 'tasks' },
 ]
+const isReference = computed(() => novel.value?.role === 'reference')
+const tabs = computed(() =>
+  isReference.value ? allTabs.filter((t) => t.name !== 'write') : allTabs,
+)
 
 function exportNovel(format: 'txt' | 'md' = 'txt') {
   window.open(novelsApi.exportUrl(id.value, format), '_blank')
@@ -46,17 +50,23 @@ onMounted(async () => {
         <div class="mb-2">
           <RouterLink to="/" class="crumb">作品</RouterLink>
           <span class="crumb-sep">/</span>
-          <span class="crumb">续写台</span>
+          <span class="crumb">{{ isReference ? '参考台' : '续写台' }}</span>
         </div>
         <h1 class="page-title truncate">{{ novel?.title || '…' }}</h1>
         <div class="page-desc tabular flex flex-wrap items-center gap-2">
           <span>{{ novel?.genre }} · {{ novel?.chapter_count }} 章</span>
+          <span v-if="novel" class="badge" :class="isReference ? 'badge--warn' : 'badge--ok'">
+            {{ isReference ? '参考' : '原稿' }}
+          </span>
           <span v-if="novel" class="status-pill" :class="statusTone(novel.status)">
             {{ statusLabel(novel.status) }}
           </span>
         </div>
+        <p v-if="isReference" class="page-desc">
+          参考小说只拆设定与文风，不会作为续写正文，也不能导出成书。
+        </p>
       </div>
-      <div class="flex gap-2 shrink-0">
+      <div v-if="novel && !isReference" class="flex gap-2 shrink-0">
         <button class="btn-ghost" type="button" title="导出为 TXT" @click="exportNovel('txt')">
           导出
         </button>

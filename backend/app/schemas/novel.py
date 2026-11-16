@@ -1,9 +1,11 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 from app.schemas.common import ORMModel
+
+NovelRole = Literal["manuscript", "reference"]
 
 
 class NovelCreate(BaseModel):
@@ -11,6 +13,7 @@ class NovelCreate(BaseModel):
     author: Optional[str] = None
     genre: str = "玄幻"
     description: Optional[str] = None
+    role: NovelRole = "manuscript"
 
 
 class NovelUpdate(BaseModel):
@@ -18,6 +21,7 @@ class NovelUpdate(BaseModel):
     author: Optional[str] = None
     genre: Optional[str] = None
     description: Optional[str] = None
+    role: Optional[NovelRole] = None
 
 
 class NovelOut(ORMModel):
@@ -26,6 +30,7 @@ class NovelOut(ORMModel):
     author: Optional[str] = None
     genre: str
     description: Optional[str] = None
+    role: NovelRole = "manuscript"
     status: str
     total_chars: int
     chapter_count: int
@@ -56,6 +61,8 @@ class ImportConfirmIn(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None
     genre: str = "玄幻"
+    # manuscript=原稿，进入续写与导出；reference=参考，只拆文风与设定
+    role: NovelRole = "manuscript"
     # 可选：用户调整后的章节列表（按 preview 结构）
     chapters: Optional[list[ChapterPreview]] = None
 

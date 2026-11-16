@@ -146,6 +146,12 @@ async def _ensure_schema_columns(conn) -> None:
         await conn.execute(text("ALTER TABLE novels ADD COLUMN avg_chapter_chars INTEGER DEFAULT 0"))
     if "median_chapter_chars" not in names:
         await conn.execute(text("ALTER TABLE novels ADD COLUMN median_chapter_chars INTEGER DEFAULT 0"))
+    if "role" not in names:
+        await conn.execute(
+            text(
+                "ALTER TABLE novels ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'manuscript'"
+            )
+        )
 
     item_rows = (await conn.execute(text("PRAGMA table_info(outline_items)"))).fetchall()
     item_names = {r[1] for r in item_rows}

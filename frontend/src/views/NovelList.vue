@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { novelsApi, type Novel } from '@/api'
 
 const novels = ref<Novel[]>([])
 const loading = ref(true)
 const error = ref('')
+const filter = ref<'manuscript' | 'reference' | 'all'>('manuscript')
 const router = useRouter()
+
+function isReference(n: Novel) {
+  return n.role === 'reference'
+}
+
+const manuscriptCount = computed(() => novels.value.filter((n) => !isReference(n)).length)
+const referenceCount = computed(() => novels.value.filter((n) => isReference(n)).length)
+const manuscriptNovels = computed(() => novels.value.filter((n) => !isReference(n)))
+const visible = computed(() => {
+  if (filter.value === 'all') return novels.value
+  if (filter.value === 'reference') return novels.value.filter((n) => isReference(n))
+  return manuscriptNovels.value
+})
 
 async function load() {
   loading.value = true
@@ -32,6 +46,10 @@ function exportNovel(n: Novel, format: 'txt' | 'md' = 'txt') {
 }
 
 function openNovel(n: Novel) {
+  if (isReference(n)) {
+    router.push(`/novels/${n.id}/bible`)
+    return
+  }
   router.push(`/novels/${n.id}/write`)
 }
 
@@ -61,16 +79,16 @@ onMounted(load)
     <section class="home-hero" aria-labelledby="home-brand">
       <p id="home-brand" class="home-brand">MythWeaver</p>
       <h1 class="home-headline">把百万字原文，接着写下去</h1>
-      <p class="home-lede">导入 → 入库压缩 → 大纲确认 → 流式续写。路径短，状态清。</p>
+      <p class="home-lede">导入 → 入库压缩 → 大纲确认 → 流式续写。参考小说只拆文风，不进正文。</p>
       <div class="home-cta">
         <button class="btn" type="button" @click="router.push('/import')">导入小说</button>
         <button
-          v-if="novels.length"
+          v-if="manuscriptNovels.length"
           class="btn-ghost"
           type="button"
-          @click="openNovel(novels[0])"
+          @click="openNovel(manuscriptNovels[0])"
         >
-          打开最近作品
+          打开最近原稿
         </button>
       </div>
     </section>
@@ -79,6 +97,39 @@ onMounted(load)
       <div class="home-shelf__head">
         <h2 id="shelf-title" class="home-shelf__title">作品</h2>
         <button class="btn-ghost btn-sm" type="button" @click="router.push('/import')">导入</button>
+      </div>
+
+      <div class="flex flex-wrap gap-2 mb-5" role="tablist" aria-label="按用途筛选">
+        <button
+          class="chip"
+          type="button"
+          role="tab"
+          :aria-selected="filter === 'manuscript'"
+          :class="filter === 'manuscript' && 'chip--active'"
+          @click="filter = 'manuscript'"
+        >
+          原稿 {{ manuscriptCount }}
+        </button>
+        <button
+          class="chip"
+          type="button"
+          role="tab"
+          :aria-selected="filter === 'reference'"
+          :class="filter === 'reference' && 'chip--active'"
+          @click="filter = 'reference'"
+        >
+          参考 {{ referenceCount }}
+        </button>
+        <button
+          class="chip"
+          type="button"
+          role="tab"
+          :aria-selected="filter === 'all'"
+          :class="filter === 'all' && 'chip--active'"
+          @click="filter = 'all'"
+        >
+          全部
+        </button>
       </div>
 
       <div v-if="loading" class="space-y-3" aria-busy="true" aria-live="polite">
@@ -93,10 +144,24 @@ onMounted(load)
         </div>
         <button class="btn" type="button" @click="router.push('/import')">开始导入</button>
       </div>
+      <div v-else-if="!visible.length && filter === 'manuscript'" class="empty-state home-empty">
+        <div>
+          <div class="font-display text-xl">默认续写里没有原稿</div>
+          <p class="page-desc">参考小说不会出现在这里。它们只拆文风，不进入正文。</p>
+        </div>
+        <button class="btn" type="button" @click="filter = 'reference'">查看参考</button>
+      </div>
+      <div v-else-if="!visible.length" class="empty-state home-empty">
+        <div>
+          <div class="font-display text-xl">还没有参考小说</div>
+          <p class="page-desc">导入时选「参考」，只拆结构与文风，不会变成可续写正文。</p>
+        </div>
+        <button class="btn" type="button" @click="router.push('/import')">导入参考</button>
+      </div>
 
       <ul v-else class="space-y-3">
         <li
-          v-for="n in novels"
+          v-for="n in visible"
           :key="n.id"
           class="panel panel-hover cv-item home-row px-5 py-4 flex items-center justify-between gap-4 cursor-pointer"
           @click="openNovel(n)"
@@ -104,6 +169,9 @@ onMounted(load)
           <div class="min-w-0">
             <div class="flex items-center gap-2 min-w-0">
               <div class="font-display text-lg leading-snug truncate">{{ n.title }}</div>
+              <span class="badge shrink-0" :class="isReference(n) ? 'badge--warn' : 'badge--ok'">
+                {{ isReference(n) ? '参考' : '原稿' }}
+              </span>
               <span class="status-pill shrink-0" :class="statusTone(n.status)">{{
                 statusLabel(n.status)
               }}</span>
@@ -116,8 +184,22 @@ onMounted(load)
             </div>
           </div>
           <div class="flex gap-2 shrink-0" @click.stop>
-            <button class="btn" type="button" @click="openNovel(n)">续写</button>
-            <button class="btn-ghost" type="button" title="导出为 TXT" @click="exportNovel(n, 'txt')">
+            <button
+              v-if="!isReference(n)"
+              class="btn"
+              type="button"
+              @click="openNovel(n)"
+            >
+              续写
+            </button>
+            <button v-else class="btn-ghost" type="button" @click="openNovel(n)">拆解</button>
+            <button
+              v-if="!isReference(n)"
+              class="btn-ghost"
+              type="button"
+              title="导出为 TXT"
+              @click="exportNovel(n, 'txt')"
+            >
               导出
             </button>
             <button class="btn-danger" type="button" @click="remove(n)">删除</button>
