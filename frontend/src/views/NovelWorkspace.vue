@@ -8,10 +8,10 @@ const novel = ref<Novel | null>(null)
 const id = computed(() => Number(route.params.id))
 
 const tabs = [
-  { name: 'bible', label: 'Story Bible', path: 'bible' },
+  { name: 'bible', label: '设定', path: 'bible' },
   { name: 'outline', label: '大纲', path: 'outline' },
   { name: 'write', label: '续写', path: 'write' },
-  { name: 'costs', label: '成本', path: 'costs' },
+  { name: 'costs', label: '用量', path: 'costs' },
   { name: 'tasks', label: '任务', path: 'tasks' },
 ]
 
@@ -40,15 +40,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div class="mb-5 flex items-end justify-between gap-4">
+  <div class="ws">
+    <header class="ws-head">
       <div class="min-w-0">
         <div class="mb-2">
-          <RouterLink to="/" class="crumb">小说列表</RouterLink>
+          <RouterLink to="/" class="crumb">作品</RouterLink>
           <span class="crumb-sep">/</span>
-          <span class="crumb">工作区</span>
+          <span class="crumb">续写台</span>
         </div>
-        <div class="page-title truncate">{{ novel?.title || '…' }}</div>
+        <h1 class="page-title truncate">{{ novel?.title || '…' }}</h1>
         <div class="page-desc tabular flex flex-wrap items-center gap-2">
           <span>{{ novel?.genre }} · {{ novel?.chapter_count }} 章</span>
           <span v-if="novel" class="status-pill" :class="statusTone(novel.status)">
@@ -57,11 +57,12 @@ onMounted(async () => {
         </div>
       </div>
       <div class="flex gap-2 shrink-0">
-        <button class="btn-ghost" title="导出为 TXT" @click="exportNovel('txt')">导出 TXT</button>
-        <button class="btn-ghost" title="导出为 Markdown" @click="exportNovel('md')">导出 MD</button>
+        <button class="btn-ghost" type="button" title="导出为 TXT" @click="exportNovel('txt')">
+          导出
+        </button>
       </div>
-    </div>
-    <nav class="ws-tabs mb-6">
+    </header>
+    <nav class="ws-tabs mb-6" aria-label="作品分区">
       <RouterLink
         v-for="t in tabs"
         :key="t.name"
