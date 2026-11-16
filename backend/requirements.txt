@@ -7,8 +7,8 @@ python-multipart>=0.0.9
 pydantic>=2.6
 pydantic-settings>=2.2
 
-# 数据库
-SQLAlchemy>=2.0.29
+# 数据库（asyncio extra 带上 greenlet；SQLAlchemy 2.1 起默认不再依赖它）
+SQLAlchemy[asyncio]>=2.0.29
 aiosqlite>=0.20
 sqlite-vec>=0.1.3
 
