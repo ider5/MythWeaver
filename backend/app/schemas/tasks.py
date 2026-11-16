@@ -15,6 +15,7 @@ class TaskOut(ORMModel):
     message: str
     result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
+    recoverable: bool = False
     created_at: datetime
     updated_at: datetime
 

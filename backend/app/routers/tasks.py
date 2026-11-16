@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import AsyncTask, CostLog
 from app.schemas.tasks import ConfigOut, CostSummaryOut, TaskOut
-from app.services.tasks import get_task_queue
+from app.services.tasks import TaskNotFound, TaskStateError, get_task_queue
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -34,6 +34,26 @@ async def get_task(task_id: int, session: AsyncSession = Depends(get_session)):
     if not task:
         raise HTTPException(404, "任务不存在")
     return task
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=TaskOut)
+async def cancel_task(task_id: int, session: AsyncSession = Depends(get_session)):
+    try:
+        return await get_task_queue().cancel(session, task_id)
+    except TaskNotFound:
+        raise HTTPException(404, "任务不存在") from None
+    except TaskStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post("/tasks/{task_id}/retry", response_model=TaskOut)
+async def retry_task(task_id: int, session: AsyncSession = Depends(get_session)):
+    try:
+        return await get_task_queue().retry(session, task_id)
+    except TaskNotFound:
+        raise HTTPException(404, "任务不存在") from None
+    except TaskStateError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/tasks/{task_id}/events")

@@ -922,6 +922,33 @@ select.input {
   border-top: 1px solid var(--line);
 }
 
+.task-row {
+  padding: 0.85rem 1.15rem 0.95rem;
+  border-left: 3px solid transparent;
+}
+.task-row--run {
+  border-left-color: var(--warn);
+}
+.task-row--fail {
+  border-left-color: var(--danger);
+}
+.task-row--ok {
+  border-left-color: var(--accent);
+}
+.task-row--stop {
+  border-left-color: var(--line-strong);
+}
+.task-row__error {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--danger);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .progress-hero {
   font-family: var(--font-prose);
   font-size: 2.4rem;

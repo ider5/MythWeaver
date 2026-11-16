@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,15 +21,54 @@ TaskHandler = Callable[[AsyncSession, AsyncTask, "TaskProgress"], Awaitable[Any]
 # 进度落库时快速失败，避免与业务写事务形成「互相等待」式死锁
 _PROGRESS_BUSY_TIMEOUT_MS = 100
 
+_TERMINAL = frozenset({"completed", "failed", "cancelled"})
+
+
+class TaskNotFound(Exception):
+    pass
+
+
+class TaskStateError(Exception):
+    pass
+
+
+class TaskCancelled(Exception):
+    """协作式取消。处理器在检查点抛出后，任务记为 cancelled。"""
+
 
 def _is_db_locked(exc: BaseException) -> bool:
     msg = str(exc).lower()
     return "database is locked" in msg or "database is busy" in msg
 
 
+def _snapshot(task: AsyncTask) -> dict[str, Any]:
+    return {
+        "id": task.id,
+        "status": task.status,
+        "progress": task.progress,
+        "message": task.message,
+        "result": task.result,
+        "error": task.error,
+    }
+
+
+async def _release_ingest_novel(session: AsyncSession, task: AsyncTask) -> None:
+    """入库未完成时把小说从 ingesting 放回 imported，便于重试。"""
+    if task.task_type != "ingest" or task.novel_id is None:
+        return
+    if task.status not in ("failed", "cancelled"):
+        return
+    from app.models import Novel
+
+    novel = await session.get(Novel, task.novel_id)
+    if novel is not None and novel.status == "ingesting":
+        novel.status = "imported"
+
+
 class TaskProgress:
     def __init__(self, task_id: int) -> None:
         self.task_id = task_id
+        self._cancel_requested = False
         self._subscribers: list[asyncio.Queue[dict[str, Any]]] = []
         self._last: dict[str, Any] = {
             "id": task_id,
@@ -40,6 +79,17 @@ class TaskProgress:
             "error": None,
         }
 
+    @property
+    def cancel_requested(self) -> bool:
+        return self._cancel_requested
+
+    def request_cancel(self) -> None:
+        self._cancel_requested = True
+
+    def raise_if_cancelled(self) -> None:
+        if self._cancel_requested:
+            raise TaskCancelled("任务已取消")
+
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._subscribers.append(q)
@@ -48,6 +98,14 @@ class TaskProgress:
     def unsubscribe(self, q: asyncio.Queue[dict[str, Any]]) -> None:
         if q in self._subscribers:
             self._subscribers.remove(q)
+
+    def sync_from_task(self, task: AsyncTask) -> None:
+        self._last = _snapshot(task)
+
+    async def publish_snapshot(self, task: AsyncTask) -> None:
+        payload = _snapshot(task)
+        self._last = payload
+        await self._notify(payload)
 
     def _merge_payload(
         self,
@@ -92,8 +150,14 @@ class TaskProgress:
         默认用独立 session 写入进度，避免与业务事务共用 session.commit()
         破坏原子性。先推送内存/SSE，再尽力落库；若遇 database is locked
         （业务长事务持锁）则跳过落库，不抛错，避免与业务侧互相等待。
+
+        已请求取消时，进度心跳会抛出 TaskCancelled，让协作式处理器停下来。
+        显式写入 completed / failed / cancelled 不受此限制。
         """
         from app import db as db_mod
+
+        if self._cancel_requested and status not in _TERMINAL:
+            raise TaskCancelled("任务已取消")
 
         payload = self._merge_payload(
             progress=progress,
@@ -109,6 +173,9 @@ class TaskProgress:
             task = await s.get(AsyncTask, self.task_id)
             if task is None:
                 raise RuntimeError(f"Task {self.task_id} not found")
+            if task.status == "cancelled" and status != "cancelled":
+                self.request_cancel()
+                raise TaskCancelled("任务已取消")
             if progress is not None:
                 task.progress = max(0.0, min(100.0, progress))
             if message is not None:
@@ -138,6 +205,8 @@ class TaskProgress:
                     # 短 timeout：持锁方若在等本协程，应立刻放弃落库而非死等
                     await s.execute(text(f"PRAGMA busy_timeout={_PROGRESS_BUSY_TIMEOUT_MS}"))
                     return await _apply(s, do_commit=True)
+            except TaskCancelled:
+                raise
             except OperationalError as exc:
                 if _is_db_locked(exc):
                     logger.warning(
@@ -217,6 +286,193 @@ class TaskQueue:
         # 任务可能已跑完，直接返回
         return
 
+    async def cancel(self, session: AsyncSession, task_id: int) -> AsyncTask:
+        """请求取消排队中或执行中的任务。已取消的再次调用直接返回。"""
+        task = await session.get(AsyncTask, task_id)
+        if task is None:
+            raise TaskNotFound()
+        if task.status in ("completed", "failed"):
+            raise TaskStateError("任务已结束，无法取消")
+        if task.status == "cancelled":
+            return task
+
+        progress = self.get_progress(task_id)
+        progress.request_cancel()
+        if task.status == "pending" and task_id not in self._running:
+            task.status = "cancelled"
+            task.message = "已取消"
+            task.error = None
+            task.updated_at = datetime.utcnow()
+            await _release_ingest_novel(session, task)
+            await session.commit()
+            await session.refresh(task)
+            await progress.publish_snapshot(task)
+            return task
+
+        # 执行中的任务只改文案。条件更新避免把已经落成 cancelled 的行写回 running。
+        await session.execute(
+            update(AsyncTask)
+            .where(
+                AsyncTask.id == task_id,
+                AsyncTask.status.in_(("pending", "running")),
+            )
+            .values(message="正在取消", updated_at=datetime.utcnow())
+        )
+        await session.commit()
+        session.expire(task)
+        await session.refresh(task)
+        await progress.publish_snapshot(task)
+        return task
+
+    async def retry(self, session: AsyncSession, task_id: int) -> AsyncTask:
+        """按原参数重新入队。入库会重新调用入库管线。"""
+        task = await session.get(AsyncTask, task_id)
+        if task is None:
+            raise TaskNotFound()
+        if task.status not in ("failed", "cancelled"):
+            raise TaskStateError("只有失败或已取消的任务可以重试")
+        if not task.can_retry():
+            raise TaskStateError("该任务无法重试")
+
+        if task.task_type == "ingest":
+            active = (
+                await session.execute(
+                    select(AsyncTask.id)
+                    .where(
+                        AsyncTask.novel_id == task.novel_id,
+                        AsyncTask.task_type == "ingest",
+                        AsyncTask.status.in_(("pending", "running")),
+                    )
+                    .limit(1)
+                )
+            ).first()
+            if active is not None:
+                raise TaskStateError("已有进行中的入库任务")
+            from app.services.ingestion import start_ingestion
+
+            try:
+                return await start_ingestion(session, int(task.novel_id))
+            except ValueError as exc:
+                raise TaskStateError(str(exc)) from exc
+
+        if task.task_type == "revise_commit":
+            payload = task.result or {}
+            from app.services.generation import enqueue_revise_commit
+
+            version_id = payload.get("version_id")
+            try:
+                new_id = await enqueue_revise_commit(
+                    session,
+                    int(payload["chapter_id"]),
+                    version_id=int(version_id) if version_id is not None else None,
+                )
+            except ValueError as exc:
+                raise TaskStateError(str(exc)) from exc
+            created = await session.get(AsyncTask, new_id)
+            if created is None:
+                raise TaskStateError("重试任务创建失败")
+            return created
+
+        if task.task_type == "outline_generate":
+            payload = dict(task.result or {})
+            from app.services.outline import enqueue_outline_generate
+
+            start = payload.get("start_from_chapter")
+            try:
+                return await enqueue_outline_generate(
+                    session,
+                    int(task.novel_id),
+                    chapter_count=int(payload.get("chapter_count") or 5),
+                    guidance=payload.get("guidance"),
+                    start_from_chapter=int(start) if start is not None else None,
+                )
+            except ValueError as exc:
+                raise TaskStateError(str(exc)) from exc
+
+        raise TaskStateError("该任务无法重试")
+
+    async def _persist_terminal(
+        self,
+        task_id: int,
+        progress: TaskProgress,
+        *,
+        status: str,
+        message: str,
+        error: str | None = None,
+        set_error: bool = False,
+        progress_value: float | None = None,
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        from app import db as db_mod
+
+        if db_mod.SessionLocal is None:
+            return
+        async with db_mod.SessionLocal() as session:
+            task = await session.get(AsyncTask, task_id)
+            if task is None:
+                return
+            if task.status == "completed":
+                await progress.publish_snapshot(task)
+                return
+            if task.status == "cancelled" and status != "cancelled":
+                await progress.publish_snapshot(task)
+                return
+            task.status = status
+            task.message = message
+            if progress_value is not None:
+                task.progress = progress_value
+            if result is not None:
+                task.result = result
+            if set_error:
+                task.error = error
+            task.updated_at = datetime.utcnow()
+            if status in ("failed", "cancelled"):
+                await _release_ingest_novel(session, task)
+            await session.commit()
+            await session.refresh(task)
+            await progress.publish_snapshot(task)
+
+    async def _finish_cancelled(self, task_id: int, progress: TaskProgress) -> None:
+        await self._persist_terminal(
+            task_id,
+            progress,
+            status="cancelled",
+            message="已取消",
+            error=None,
+            set_error=True,
+        )
+
+    async def _finish_failed(
+        self,
+        task_id: int,
+        progress: TaskProgress,
+        *,
+        error: str,
+        message: str | None = None,
+    ) -> None:
+        from app import db as db_mod
+
+        if progress.cancel_requested:
+            await self._finish_cancelled(task_id, progress)
+            return
+        msg = message
+        if msg is None and db_mod.SessionLocal is not None:
+            async with db_mod.SessionLocal() as session:
+                task = await session.get(AsyncTask, task_id)
+                if task is not None and task.can_retry():
+                    msg = "失败，可重试"
+        if msg is None:
+            msg = "失败"
+        await self._persist_terminal(
+            task_id,
+            progress,
+            status="failed",
+            message=msg,
+            error=error,
+            set_error=True,
+            progress_value=100.0,
+        )
+
     async def _run(self, task_id: int) -> None:
         async with self._lock:
             if task_id in self._running:
@@ -225,48 +481,51 @@ class TaskQueue:
 
         from app import db as db_mod
 
-        if db_mod.SessionLocal is None:
-            return
         progress = self.get_progress(task_id)
         try:
+            if db_mod.SessionLocal is None:
+                return
             async with db_mod.SessionLocal() as session:
                 task = await session.get(AsyncTask, task_id)
                 if task is None:
                     return
-                # 同步内存快照，供 locked 时 SSE 仍有正确基线
-                progress._last = {
-                    "id": task.id,
-                    "status": task.status,
-                    "progress": task.progress,
-                    "message": task.message,
-                    "result": task.result,
-                    "error": task.error,
-                }
+                progress.sync_from_task(task)
+                if task.status == "cancelled" or progress.cancel_requested:
+                    await self._finish_cancelled(task_id, progress)
+                    return
                 handler = self._handlers.get(task.task_type)
                 if handler is None:
-                    await progress.update(session, status="failed", error="无处理器", message="失败")
+                    await self._finish_failed(
+                        task_id, progress, error="无处理器", message="失败"
+                    )
                     return
-                await progress.update(session, status="running", progress=1.0, message="开始执行")
                 try:
+                    await progress.update(session, status="running", progress=1.0, message="开始执行")
                     result = await handler(session, task, progress)
                     # 业务事务结束后再落终态，避免与未提交写锁冲突
                     if session.in_transaction():
                         await session.commit()
-                    if isinstance(result, dict):
-                        await progress.update(
-                            session, status="completed", progress=100.0, message="完成", result=result
-                        )
-                    else:
-                        await progress.update(
-                            session, status="completed", progress=100.0, message="完成", result={"ok": True}
-                        )
+                    if progress.cancel_requested:
+                        raise TaskCancelled("任务已取消")
+                    payload = result if isinstance(result, dict) else {"ok": True}
+                    await progress.update(
+                        session,
+                        status="completed",
+                        progress=100.0,
+                        message="完成",
+                        result=payload,
+                    )
+                except TaskCancelled:
+                    logger.info("任务 %s 已取消", task_id)
+                    await session.rollback()
+                    await self._finish_cancelled(task_id, progress)
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("任务 %s 失败", task_id)
                     await session.rollback()
-                    async with db_mod.SessionLocal() as s2:
-                        await progress.update(
-                            s2, status="failed", message="失败", error=str(exc), progress=100.0
-                        )
+                    if progress.cancel_requested:
+                        await self._finish_cancelled(task_id, progress)
+                    else:
+                        await self._finish_failed(task_id, progress, error=str(exc))
         finally:
             async with self._lock:
                 self._running.discard(task_id)
@@ -294,6 +553,7 @@ async def fail_interrupted_tasks(session: AsyncSession) -> int:
         task.status = "failed"
         task.error = "interrupted by restart"
         task.message = "进程重启，任务已中断"
+        await _release_ingest_novel(session, task)
     await session.commit()
     return len(rows)
 
